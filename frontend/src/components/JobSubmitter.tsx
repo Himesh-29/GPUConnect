@@ -1,26 +1,49 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { Zap, Loader2 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
+
+interface ModelInfo {
+    name: string;
+    providers: number;
+}
 
 const JobSubmitter: React.FC = () => {
     const { token } = useAuth();
     const [prompt, setPrompt] = useState('');
-    const [model, setModel] = useState('llama3.2:latest');
+    const [model, setModel] = useState('');
+    const [models, setModels] = useState<ModelInfo[]>([]);
+    const [loadingModels, setLoadingModels] = useState(true);
     const [status, setStatus] = useState('');
     const [result, setResult] = useState('');
-    const [jobId, setJobId] = useState<number | null>(null);
     const [polling, setPolling] = useState(false);
 
-    const handleSubmit = async () => {
-        if (!prompt.trim()) {
-            setStatus('Please enter a prompt.');
-            return;
+    useEffect(() => {
+        fetchModels();
+    }, []);
+
+    const fetchModels = async () => {
+        setLoadingModels(true);
+        try {
+            const resp = await axios.get(`${API_URL}/api/computing/models/`);
+            setModels(resp.data.models || []);
+            if (resp.data.models?.length > 0) {
+                setModel(resp.data.models[0].name);
+            }
+        } catch {
+            setModels([]);
         }
+        setLoadingModels(false);
+    };
+
+    const handleSubmit = async () => {
+        if (!prompt.trim()) { setStatus('Please enter a prompt.'); return; }
+        if (!model) { setStatus('No models available. Wait for a GPU node to connect.'); return; }
+
         setStatus('Submitting...');
         setResult('');
-        setJobId(null);
 
         try {
             const response = await axios.post(
@@ -28,26 +51,23 @@ const JobSubmitter: React.FC = () => {
                 { prompt, model },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
-            setStatus(`Job #${response.data.job_id} submitted! Waiting for result...`);
-            setJobId(response.data.job_id);
+            setStatus(`Job #${response.data.job_id} submitted — waiting for result...`);
             pollJobResult(response.data.job_id);
         } catch (err: any) {
-            const msg = err.response?.data?.error || err.message;
-            setStatus(`Error: ${msg}`);
+            setStatus(`Error: ${err.response?.data?.error || err.message}`);
         }
     };
 
     const pollJobResult = async (id: number) => {
         setPolling(true);
-        const maxAttempts = 60;
-        for (let i = 0; i < maxAttempts; i++) {
+        for (let i = 0; i < 60; i++) {
             try {
                 const resp = await axios.get(
                     `${API_URL}/api/computing/jobs/${id}/`,
                     { headers: { Authorization: `Bearer ${token}` } }
                 );
                 if (resp.data.status === 'COMPLETED') {
-                    setStatus(`✅ Job #${id} completed!`);
+                    setStatus(`✅ Job #${id} completed`);
                     setResult(resp.data.result?.output || JSON.stringify(resp.data.result));
                     setPolling(false);
                     return;
@@ -57,80 +77,110 @@ const JobSubmitter: React.FC = () => {
                     setPolling(false);
                     return;
                 }
-            } catch {
-                // ignore polling errors
-            }
+            } catch { /* ignore */ }
             await new Promise(r => setTimeout(r, 2000));
         }
-        setStatus(`⏱ Job #${id} timed out waiting for result.`);
+        setStatus(`⏱ Job #${id} timed out`);
         setPolling(false);
     };
 
     return (
         <div className="glass-card">
-            <h3>Submit a Job</h3>
-            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', marginTop: '16px' }}>
+            <div className="card-header">
+                <h3>Submit a Job</h3>
+                {models.length > 0 && (
+                    <span style={{
+                        fontSize: '12px', color: 'var(--success)',
+                        display: 'flex', alignItems: 'center', gap: '4px'
+                    }}>
+                        <span style={{ width: 6, height: 6, borderRadius: '50%', background: 'var(--success)', display: 'inline-block' }} />
+                        {models.length} model{models.length > 1 ? 's' : ''} online
+                    </span>
+                )}
+            </div>
+
+            <div style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
+                {/* Model selector */}
                 <select
+                    className="input-field"
                     value={model}
                     onChange={(e) => setModel(e.target.value)}
-                    style={{
-                        padding: '10px 14px', borderRadius: '8px',
-                        background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(197,160,89,0.3)',
-                        color: '#333', fontSize: '14px', fontFamily: 'inherit'
-                    }}
+                    disabled={loadingModels || models.length === 0}
                 >
-                    <option value="llama3.2:latest">🦙 Llama 3.2 (2GB)</option>
-                    <option value="gemma3:270m">💎 Gemma 3 270M (291MB)</option>
+                    {loadingModels ? (
+                        <option>Loading models...</option>
+                    ) : models.length === 0 ? (
+                        <option>No nodes connected</option>
+                    ) : (
+                        models.map(m => (
+                            <option key={m.name} value={m.name}>
+                                {m.name} — {m.providers} node{m.providers > 1 ? 's' : ''}
+                            </option>
+                        ))
+                    )}
                 </select>
 
+                {/* Prompt */}
                 <textarea
+                    className="input-field"
                     placeholder="Enter your prompt..."
                     value={prompt}
                     onChange={(e) => setPrompt(e.target.value)}
                     rows={3}
-                    style={{
-                        padding: '10px 14px', borderRadius: '8px',
-                        background: 'rgba(255,255,255,0.7)', border: '1px solid rgba(197,160,89,0.3)',
-                        color: '#333', resize: 'vertical', fontSize: '14px',
-                        fontFamily: 'inherit'
-                    }}
+                    style={{ resize: 'vertical' }}
                 />
 
+                {/* Submit */}
                 <button
                     className="btn-primary"
                     onClick={handleSubmit}
-                    disabled={polling || !prompt.trim()}
-                    style={{ opacity: polling ? 0.6 : 1, width: '100%' }}
+                    disabled={polling || !prompt.trim() || !model}
+                    style={{
+                        width: '100%',
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                    }}
                 >
-                    {polling ? '⏳ Processing...' : '🚀 Submit Job (1 Credit)'}
+                    {polling ? (
+                        <><Loader2 size={16} className="spin" /> Processing...</>
+                    ) : (
+                        <><Zap size={16} /> Submit Job (1 Credit)</>
+                    )}
                 </button>
 
+                {/* Status */}
                 {status && (
                     <div style={{
-                        padding: '10px 14px', borderRadius: '8px',
+                        padding: '10px 14px', borderRadius: '8px', fontSize: '13px',
                         background: status.includes('Error') || status.includes('❌')
-                            ? 'rgba(220,38,38,0.08)'
-                            : status.includes('✅')
-                                ? 'rgba(34,197,94,0.08)'
-                                : 'rgba(197,160,89,0.08)',
-                        border: '1px solid rgba(197,160,89,0.2)',
-                        fontSize: '13px', color: '#555'
+                            ? 'rgba(239,68,68,0.1)' : status.includes('✅')
+                            ? 'rgba(34,197,94,0.1)' : 'rgba(212,160,55,0.08)',
+                        border: '1px solid var(--border)',
+                        color: status.includes('Error') || status.includes('❌')
+                            ? 'var(--error)' : status.includes('✅')
+                            ? 'var(--success)' : 'var(--text-secondary)',
                     }}>
                         {status}
                     </div>
                 )}
 
+                {/* Result */}
                 {result && (
                     <div style={{
-                        padding: '14px', borderRadius: '8px',
-                        background: 'rgba(255,255,255,0.8)',
-                        border: '1px solid rgba(197,160,89,0.3)',
+                        padding: '16px', borderRadius: '8px',
+                        background: 'rgba(0,0,0,0.3)',
+                        border: '1px solid var(--border-accent)',
                         whiteSpace: 'pre-wrap', fontSize: '13px',
-                        color: '#333', lineHeight: '1.5',
+                        color: 'var(--text-primary)', lineHeight: '1.6',
                         maxHeight: '300px', overflowY: 'auto'
                     }}>
-                        <strong style={{ color: 'var(--color-gold)' }}>LLM Response:</strong>
-                        <br />{result}
+                        <div style={{
+                            fontSize: '11px', color: 'var(--accent)',
+                            textTransform: 'uppercase', letterSpacing: '1px',
+                            marginBottom: '8px', fontWeight: 600
+                        }}>
+                            LLM Response
+                        </div>
+                        {result}
                     </div>
                 )}
             </div>

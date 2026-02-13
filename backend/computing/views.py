@@ -28,7 +28,6 @@ class JobSubmissionView(views.APIView):
         user.wallet_balance -= JOB_COST
         user.save()
 
-        # 1. Create Job in DB
         job = Job.objects.create(
             user=user,
             task_type="inference",
@@ -37,7 +36,7 @@ class JobSubmissionView(views.APIView):
             cost=JOB_COST,
         )
 
-        # 2. Dispatch to all connected GPU provider nodes
+        # Dispatch to all connected GPU provider nodes
         channel_layer = get_channel_layer()
         async_to_sync(channel_layer.group_send)(
             "gpu_nodes",
@@ -91,3 +90,56 @@ class JobListView(views.APIView):
             "completed_at": j.completed_at,
         } for j in jobs]
         return Response(data)
+
+
+class AvailableModelsView(views.APIView):
+    """Returns models available across all active nodes.
+    
+    Public endpoint — consumers can browse what's available before signing up.
+    """
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        active_nodes = Node.objects.filter(is_active=True)
+        model_map = {}  # model_name -> { providers: int, node_ids: [] }
+
+        for node in active_nodes:
+            models = node.gpu_info.get("models", [])
+            for m in models:
+                if m not in model_map:
+                    model_map[m] = {
+                        "name": m,
+                        "providers": 0,
+                        "nodes": [],
+                    }
+                model_map[m]["providers"] += 1
+                model_map[m]["nodes"].append(node.node_id)
+
+        models_list = sorted(model_map.values(), key=lambda x: -x["providers"])
+        return Response({
+            "models": models_list,
+            "total_nodes": active_nodes.count(),
+        })
+
+
+class NetworkStatsView(views.APIView):
+    """Public endpoint for network statistics."""
+    permission_classes = [AllowAny]
+
+    def get(self, request):
+        active_nodes = Node.objects.filter(is_active=True).count()
+        total_jobs = Job.objects.count()
+        completed_jobs = Job.objects.filter(status="COMPLETED").count()
+
+        # Collect unique models
+        all_models = set()
+        for node in Node.objects.filter(is_active=True):
+            for m in node.gpu_info.get("models", []):
+                all_models.add(m)
+
+        return Response({
+            "active_nodes": active_nodes,
+            "total_jobs": total_jobs,
+            "completed_jobs": completed_jobs,
+            "available_models": len(all_models),
+        })
