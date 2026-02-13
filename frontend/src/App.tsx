@@ -77,7 +77,12 @@ const Marketplace = () => {
   const [data, setData] = useState<any>(null);
 
   useEffect(() => {
-    axios.get(`${API_URL}/api/computing/models/`).then(r => setData(r.data)).catch(() => {});
+    const fetchModels = () => {
+      axios.get(`${API_URL}/api/computing/models/`).then(r => setData(r.data)).catch(() => {});
+    };
+    fetchModels();
+    const interval = setInterval(fetchModels, 2000);
+    return () => clearInterval(interval);
   }, []);
 
   return (
@@ -239,7 +244,12 @@ const IntegrateSection = () => (
 const LandingPage = () => {
   const [stats, setStats] = useState<any>(null);
   useEffect(() => {
-    axios.get(`${API_URL}/api/computing/stats/`).then(r => setStats(r.data)).catch(() => {});
+    const fetchStats = () => {
+      axios.get(`${API_URL}/api/computing/stats/`).then(r => setStats(r.data)).catch(() => {});
+    };
+    fetchStats();
+    const interval = setInterval(fetchStats, 2000);
+    return () => clearInterval(interval);
   }, []);
 
   return (

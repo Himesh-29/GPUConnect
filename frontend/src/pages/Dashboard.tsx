@@ -117,8 +117,14 @@ const JobHistory = ({ token }: { token: string | null }) => {
 
 const NodesPanel = () => {
     const [stats, setStats] = useState<any>(null);
+    
     useEffect(() => {
-        axios.get(`${API_URL}/api/computing/stats/`).then(r => setStats(r.data)).catch(() => {});
+        const fetchStats = () => {
+            axios.get(`${API_URL}/api/computing/stats/`).then(r => setStats(r.data)).catch(() => {});
+        };
+        fetchStats(); // initial fetch
+        const interval = setInterval(fetchStats, 2000);
+        return () => clearInterval(interval);
     }, []);
 
     return (

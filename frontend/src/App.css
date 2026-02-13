@@ -139,7 +139,7 @@
 
 .btn-primary-large {
   background: var(--accent-gradient);
-  color: var(--bg-primary);
+  color: #000000; /* Force black for maximum contrast */
   padding: 16px 36px;
   border-radius: var(--radius-sm);
   font-weight: 700;
@@ -147,7 +147,12 @@
   box-shadow: 0 4px 25px rgba(212, 160, 55, 0.3);
   transition: all 0.25s;
 }
-.btn-primary-large:hover { transform: translateY(-3px); box-shadow: 0 8px 35px rgba(212, 160, 55, 0.4); }
+.btn-primary-large:hover { 
+  transform: translateY(-3px); 
+  box-shadow: 0 8px 35px rgba(212, 160, 55, 0.5);
+  color: #000000;
+  filter: brightness(1.1);
+}
 
 .btn-secondary-large {
   background: transparent;
