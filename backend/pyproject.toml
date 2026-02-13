@@ -1,0 +1,24 @@
+[project]
+name = "backend"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.12"
+dependencies = [
+    "aiohttp>=3.13.3",
+    "celery>=5.6.2",
+    "channels>=4.3.2",
+    "channels-redis>=4.3.0",
+    "daphne>=4.2.1",
+    "dj-database-url>=3.1.0",
+    "django>=6.0.2",
+    "django-cors-headers>=4.9.0",
+    "djangorestframework>=3.16.1",
+    "djangorestframework-simplejwt>=5.5.1",
+    "psycopg[binary]>=3.3.2",
+    "pytest>=9.0.2",
+    "pytest-django>=4.11.1",
+    "redis>=7.1.1",
+    "requests>=2.32.5",
+    "websockets>=16.0",
+]
