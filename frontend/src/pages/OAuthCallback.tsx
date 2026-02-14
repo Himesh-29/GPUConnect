@@ -32,7 +32,6 @@ export const OAuthCallback: React.FC = () => {
 
         const params = new URLSearchParams(hash);
         const accessToken = params.get('access');
-        const userDataStr = params.get('user');
 
         if (accessToken) {
           login(accessToken);
