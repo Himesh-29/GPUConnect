@@ -6,6 +6,7 @@ services:
     runtime: python
     region: oregon
     plan: free
+    autoDeploy: false          # Deploys are triggered only via GitHub Actions after tests pass
     rootDir: backend
     buildCommand: ./build.sh
     startCommand: daphne -b 0.0.0.0 -p $PORT config.asgi:application
