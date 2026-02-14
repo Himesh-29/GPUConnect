@@ -84,6 +84,11 @@ CSRF_COOKIE_SECURE = not DEBUG
 SESSION_COOKIE_DOMAIN = None
 CSRF_TRUSTED_ORIGINS = os.environ.get("CSRF_TRUSTED_ORIGINS", "http://localhost:5173,http://127.0.0.1:5173,http://localhost:8000").split(",")
 
+# Trust Render's reverse proxy (X-Forwarded-Proto: https)
+# Without this, Django thinks all requests are HTTP and constructs wrong OAuth redirect URIs
+SECURE_PROXY_SSL_HEADER = ('HTTP_X_FORWARDED_PROTO', 'https')
+USE_X_FORWARDED_HOST = True
+
 ROOT_URLCONF = "config.urls"
 
 TEMPLATES = [
