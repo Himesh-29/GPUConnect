@@ -1,6 +1,6 @@
 [project]
 name = "backend"
-version = "1.0.0"
+version = "1.0.1"
 description = "GPU Connect - Decentralized AI Compute Marketplace. Connect providers and consumers to share GPU resources via secure token-based authentication and real-time WebSocket communication."
 readme = "README.md"
 requires-python = ">=3.12"

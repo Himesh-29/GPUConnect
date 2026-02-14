@@ -1,5 +1,54 @@
 # GPU Connect Releases
 
+## [v1.0.1](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.1) — OAuth Fix for Chrome & Incognito
+
+**Release Date**: February 15, 2026
+
+### 🐛 Bug Fix
+
+Fixed OAuth login (Google, GitHub, Microsoft) failing with "Authentication failed, try again" in Chrome, Firefox, Safari, and all incognito/private browsing modes.
+
+### Root Cause
+
+The OAuth flow relied on **cross-site cookies** to exchange a Django session for JWT tokens. After OAuth with Google/GitHub completed, the backend set a session cookie on `onrender.com`, then redirected to the frontend on `vercel.app`. When the frontend called the backend API to exchange the session for JWT, browsers blocked the session cookie as a **third-party cookie** — resulting in a 401 "Not authenticated" error.
+
+This worked in Edge (normal mode) because Edge has a more lenient third-party cookie policy, but failed everywhere else.
+
+### The Fix
+
+Redesigned the OAuth callback flow to eliminate cross-site cookie dependency entirely:
+
+**Before (broken in Chrome):**
+```
+Frontend (vercel.app) → Backend OAuth → Set session cookie (onrender.com)
+→ Redirect to frontend → Frontend calls backend API with cookie
+→ ❌ Cookie blocked as third-party → 401 error
+```
+
+**After (works everywhere):**
+```
+Frontend (vercel.app) → Backend OAuth → Set session cookie (onrender.com)
+→ Redirect to backend /api/auth/oauth/callback/complete/ (same domain — cookie works ✅)
+→ Backend reads session, generates JWT tokens
+→ Redirect to frontend with tokens in URL hash fragment
+→ Frontend reads tokens from hash — no API call, no cookies needed ✅
+```
+
+### Files Changed
+
+- `backend/core/oauth_views.py` — New `OAuthCompleteView` that generates JWT and redirects with tokens in URL fragment
+- `backend/core/oauth_urls.py` — Added `/complete/` route
+- `backend/config/settings.py` — `LOGIN_REDIRECT_URL` now points to backend instead of frontend
+- `frontend/src/pages/OAuthCallback.tsx` — Reads tokens from URL hash instead of making API call; cleans hash from browser history
+
+### Security Notes
+
+- JWT tokens are passed via URL **fragment** (`#`), which is never sent to servers or logged
+- Tokens are cleaned from browser history immediately after reading
+- Legacy session-exchange endpoint kept for backward compatibility
+
+---
+
 ## [v1.0.0](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.0) — Cross-Platform & Production Ready
 
 **Release Date**: February 14, 2026
