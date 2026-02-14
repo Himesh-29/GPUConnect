@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboard } from '../context/DashboardContext';
 import { LayoutDashboard, Wallet, Server, Activity, RefreshCw, TrendingUp, Cpu, ArrowUpRight, ArrowDownRight, Filter } from 'lucide-react';
@@ -385,34 +385,20 @@ const AgentTokenManager = ({ token }: { token: string | null }) => {
 const CHART_COLORS = ['#d4a037', '#f0c95c', '#b8860b', '#ffd700', '#e6b800', '#cc9900'];
 
 const ProviderDashboard = ({ token }: { token: string | null }) => {
-  const [data, setData] = useState<any>(null);
+  const { providerStats, setProviderDays } = useDashboard();
   const [days, setDays] = useState(30);
   const [txFilter, setTxFilter] = useState<string>('all');
-  const [loading, setLoading] = useState(true);
 
-  const fetchStats = useCallback(async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const resp = await axios.get(`${API_URL}/api/computing/provider-stats/?days=${days}`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setData(resp.data);
-    } catch { /* ignore */ }
-    setLoading(false);
-  }, [days, token]);
+  const onDaysChange = (d: number) => {
+    setDays(d);
+    setProviderDays(d);
+  };
 
-  useEffect(() => {
-    fetchStats();
-    const interval = setInterval(() => fetchStats(true), 3000);
-    return () => clearInterval(interval);
-  }, [fetchStats]);
-
-  if (loading && !data) {
+  if (!providerStats) {
     return <div className="glass-card"><p style={{ color: 'var(--text-muted)', padding: '40px', textAlign: 'center' }}>Loading provider stats...</p></div>;
   }
-  if (!data) return null;
 
-  const { provider, consumer, wallet_balance, transactions } = data;
+  const { provider, consumer, wallet_balance, transactions } = providerStats;
   const filteredTx = txFilter === 'all' ? transactions : transactions.filter((t: any) => t.type === txFilter);
 
   // Custom tooltip for charts
@@ -445,7 +431,7 @@ const ProviderDashboard = ({ token }: { token: string | null }) => {
           {[7, 14, 30, 90].map(d => (
             <button
               key={d}
-              onClick={() => setDays(d)}
+              onClick={() => onDaysChange(d)}
               style={{
                 padding: '5px 12px', borderRadius: '6px', fontSize: '12px', fontWeight: 600, cursor: 'pointer',
                 border: days === d ? '1px solid var(--accent)' : '1px solid var(--border)',

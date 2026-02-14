@@ -1,56 +1,53 @@
 import React, { useState, useEffect } from 'react';
 import axios from 'axios';
 import { useAuth } from '../context/AuthContext';
+import { useDashboard } from '../context/DashboardContext';
 import { Zap, Loader2 } from 'lucide-react';
 
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
-interface ModelInfo {
-    name: string;
-    providers: number;
-}
-
 const JobSubmitter: React.FC = () => {
     const { token } = useAuth();
+    const { models, recentJobs, loading: loadingModels } = useDashboard();
     const [prompt, setPrompt] = useState('');
     const [model, setModel] = useState('');
-    const [models, setModels] = useState<ModelInfo[]>([]);
-    const [loadingModels, setLoadingModels] = useState(true);
     const [status, setStatus] = useState('');
     const [result, setResult] = useState('');
-    const [polling, setPolling] = useState(false);
+    const [submitting, setSubmitting] = useState(false);
+    const [activeJobId, setActiveJobId] = useState<number | null>(null);
 
+    // Auto-select first model if none selected
     useEffect(() => {
-        fetchModels();
-        const interval = setInterval(fetchModels, 3000);
-        return () => clearInterval(interval);
-    }, []);
-
-    const fetchModels = async () => {
-        // Don't show global loading spinner on periodic refetches
-        // setLoadingModels(true); 
-        try {
-            const resp = await axios.get(`${API_URL}/api/computing/models/`);
-            const newModels = resp.data.models || [];
-            setModels(newModels);
-
-            if (newModels.length === 0) {
-                setModel('');
-            } else if (!model || !newModels.find((m: ModelInfo) => m.name === model)) {
-                // If no model selected OR selected model disappeared, pick first available
-                setModel(newModels[0].name);
-            }
-        } catch {
-            setModels([]);
-            setModel('');
+        if (!model && models.length > 0) {
+            setModel(models[0].name);
         }
-        setLoadingModels(false);
-    };
+    }, [models, model]);
+
+    // Monitor active job status via streaming recentJobs
+    useEffect(() => {
+        if (activeJobId) {
+            const job = recentJobs.find(j => j.id === activeJobId);
+            if (job) {
+                if (job.status === 'COMPLETED') {
+                    setStatus(`✅ Job #${activeJobId} completed`);
+                    setResult(job.result?.output || JSON.stringify(job.result));
+                    setActiveJobId(null);
+                } else if (job.status === 'FAILED') {
+                    setStatus(`❌ Job #${activeJobId} failed`);
+                    setResult(job.result?.error || 'Unknown error');
+                    setActiveJobId(null);
+                } else if (job.status === 'RUNNING') {
+                    setStatus(`⚙️ Job #${activeJobId} is running...`);
+                }
+            }
+        }
+    }, [recentJobs, activeJobId]);
 
     const handleSubmit = async () => {
         if (!prompt.trim()) { setStatus('Please enter a prompt.'); return; }
         if (!model) { setStatus('No models available. Wait for a GPU node to connect.'); return; }
 
+        setSubmitting(true);
         setStatus('Submitting...');
         setResult('');
 
@@ -60,37 +57,13 @@ const JobSubmitter: React.FC = () => {
                 { prompt, model },
                 { headers: { Authorization: `Bearer ${token}` } }
             );
-            setStatus(`Job #${response.data.job_id} submitted — waiting for result...`);
-            pollJobResult(response.data.job_id);
+            const jobId = response.data.job_id;
+            setActiveJobId(jobId);
+            setStatus(`Job #${jobId} submitted — waiting for result...`);
         } catch (err: any) {
             setStatus(`Error: ${err.response?.data?.error || err.message}`);
         }
-    };
-
-    const pollJobResult = async (id: number) => {
-        setPolling(true);
-        for (let i = 0; i < 60; i++) {
-            try {
-                const resp = await axios.get(
-                    `${API_URL}/api/computing/jobs/${id}/`,
-                    { headers: { Authorization: `Bearer ${token}` } }
-                );
-                if (resp.data.status === 'COMPLETED') {
-                    setStatus(`✅ Job #${id} completed`);
-                    setResult(resp.data.result?.output || JSON.stringify(resp.data.result));
-                    setPolling(false);
-                    return;
-                } else if (resp.data.status === 'FAILED') {
-                    setStatus(`❌ Job #${id} failed`);
-                    setResult(resp.data.result?.error || 'Unknown error');
-                    setPolling(false);
-                    return;
-                }
-            } catch { /* ignore */ }
-            await new Promise(r => setTimeout(r, 2000));
-        }
-        setStatus(`⏱ Job #${id} timed out`);
-        setPolling(false);
+        setSubmitting(false);
     };
 
     return (
@@ -143,17 +116,17 @@ const JobSubmitter: React.FC = () => {
                 <button
                     className="btn-primary"
                     onClick={handleSubmit}
-                    disabled={polling || !prompt.trim() || !model}
+                    disabled={submitting || !!activeJobId || !prompt.trim() || !model}
                     style={{
                         width: '100%',
                         display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                        cursor: (polling || !prompt.trim() || !model) ? 'not-allowed' : 'pointer',
-                        opacity: (polling || !prompt.trim() || !model) ? 0.7 : 1
+                        cursor: (submitting || !!activeJobId || !prompt.trim() || !model) ? 'not-allowed' : 'pointer',
+                        opacity: (submitting || !!activeJobId || !prompt.trim() || !model) ? 0.7 : 1
                     }}
                 >
                     {models.length === 0 ? (
                         <><Zap size={16} className="opacity-50" /> No Nodes Connected</>
-                    ) : polling ? (
+                    ) : (submitting || !!activeJobId) ? (
                         <><Loader2 size={16} className="spin" /> Processing...</>
                     ) : (
                         <><Zap size={16} /> Submit Job (1 Credit)</>

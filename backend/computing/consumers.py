@@ -126,6 +126,14 @@ class GPUConsumer(AsyncWebsocketConsumer):
         if self.node_id != "unknown":
             await self._mark_node_inactive(self.node_id)
             await self._broadcast_dashboard_update()
+            if self.provider_user_id:
+                await self.channel_layer.group_send(
+                    f"user_{self.provider_user_id}",
+                    {
+                        "type": "dashboard_update",
+                        "data": {"type": "refresh_provider_stats"}
+                    }
+                )
 
     async def receive(self, text_data):
         data = json.loads(text_data)
@@ -157,6 +165,13 @@ class GPUConsumer(AsyncWebsocketConsumer):
                 "owner": username
             }, ensure_ascii=False))
             await self._broadcast_dashboard_update()
+            await self.channel_layer.group_send(
+                f"user_{user_id}",
+                {
+                    "type": "dashboard_update",
+                    "data": {"type": "refresh_provider_stats"}
+                }
+            )
 
         elif msg_type == "job_result":
             result = data.get("result", {})
@@ -221,8 +236,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
                 {
                     "type": "dashboard_update",
                     "data": {
-                        "type": "balance_update",
-                        "balance": str(provider_balance)
+                        "type": "refresh_provider_stats"
                     }
                 }
             )
@@ -387,6 +401,7 @@ class DashboardConsumer(AsyncWebsocketConsumer):
                 )
                 logger.info(f"Dashboard WS: User {user.username} connected")
 
+        self.provider_days = 30 # Default
         await self.accept()
         
         # 3. Send Initial Public Snapshot
@@ -415,7 +430,14 @@ class DashboardConsumer(AsyncWebsocketConsumer):
             await self.send(json.dumps({
                 "type": "jobs_update",
                 "jobs": jobs
-            }, default=str)) # default=str for datetime
+            }, default=str))
+            
+            # 5. Send Initial Provider Stats
+            provider_stats = await self._get_provider_stats_async(self.user_id, self.provider_days)
+            await self.send(json.dumps({
+                "type": "provider_stats_update",
+                "stats": provider_stats
+            }))
 
     async def disconnect(self, close_code):
         await self.channel_layer.group_discard(
@@ -428,9 +450,36 @@ class DashboardConsumer(AsyncWebsocketConsumer):
                 self.channel_name
             )
 
+    async def receive(self, text_data):
+        try:
+            data = json.loads(text_data)
+            msg_type = data.get("type")
+            
+            if msg_type == "subscribe_provider_stats":
+                self.provider_days = int(data.get("days", 30))
+                if self.user_id:
+                    stats = await self._get_provider_stats_async(self.user_id, self.provider_days)
+                    await self.send(json.dumps({
+                        "type": "provider_stats_update",
+                        "stats": stats
+                    }))
+        except Exception as e:
+            logger.error(f"DashboardConsumer receive error: {e}")
+
     async def dashboard_update(self, event):
         """Handle broadcast messages (public or private)."""
-        await self.send(json.dumps(event["data"], default=str))
+        msg = event["data"]
+        
+        # If this is a generic trigger to refresh provider stats, calculate them locally for this user
+        if msg.get("type") == "refresh_provider_stats" and self.user_id:
+             stats = await self._get_provider_stats_async(self.user_id, self.provider_days)
+             await self.send(json.dumps({
+                 "type": "provider_stats_update",
+                 "stats": stats
+             }))
+             return
+
+        await self.send(json.dumps(msg, default=str))
 
     @database_sync_to_async
     def _get_user_from_token(self, token):
@@ -503,3 +552,14 @@ class DashboardConsumer(AsyncWebsocketConsumer):
                     model_counts[name] = model_counts.get(name, 0) + 1
         
         return [{"name": k, "providers": v} for k, v in model_counts.items()]
+
+    @database_sync_to_async
+    def _get_provider_stats_async(self, user_id, days):
+        from core.models import User
+        from .utils import get_provider_stats
+        try:
+            user = User.objects.get(id=user_id)
+            return get_provider_stats(user, days)
+        except Exception as e:
+            logger.error(f"Error getting provider stats: {e}")
+            return None

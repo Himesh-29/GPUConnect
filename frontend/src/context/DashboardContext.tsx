@@ -30,6 +30,8 @@ interface DashboardContextType {
   models: ModelInfo[];
   balance: number | null;
   recentJobs: JobInfo[];
+  providerStats: any | null;
+  setProviderDays: (days: number) => void;
   loading: boolean;
 }
 
@@ -38,6 +40,8 @@ const DashboardContext = createContext<DashboardContextType>({
   models: [],
   balance: null,
   recentJobs: [],
+  providerStats: null,
+  setProviderDays: () => {},
   loading: true
 });
 
@@ -49,6 +53,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [models, setModels] = useState<ModelInfo[]>([]);
   const [balance, setBalance] = useState<number | null>(null);
   const [recentJobs, setRecentJobs] = useState<JobInfo[]>([]);
+  const [providerStats, setProviderStats] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   
   const ws = useRef<WebSocket | null>(null);
@@ -111,6 +116,21 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
         });
         break;
+      case 'provider_stats_update':
+        setProviderStats(msg.stats);
+        if (msg.stats?.wallet_balance !== undefined) {
+          setBalance(msg.stats.wallet_balance);
+        }
+        break;
+    }
+  };
+
+  const setProviderDays = (days: number) => {
+    if (ws.current?.readyState === WebSocket.OPEN) {
+      ws.current.send(JSON.stringify({
+        type: 'subscribe_provider_stats',
+        days: days
+      }));
     }
   };
 
@@ -130,7 +150,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [user]);
 
   return (
-    <DashboardContext.Provider value={{ stats, models, balance, recentJobs, loading }}>
+    <DashboardContext.Provider value={{ stats, models, balance, recentJobs, providerStats, setProviderDays, loading }}>
       {children}
     </DashboardContext.Provider>
   );
