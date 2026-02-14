@@ -21,6 +21,13 @@ class JobSubmissionView(views.APIView):
         if not prompt:
             return Response({"error": "Prompt is required"}, status=status.HTTP_400_BAD_REQUEST)
 
+        # Ensure there are active nodes NOT owned by this user
+        other_nodes = Node.objects.filter(is_active=True).exclude(owner=user)
+        if not other_nodes.exists():
+            return Response({
+                "error": "No available third-party nodes. To maintain ecosystem integrity, you cannot serve your own requests."
+            }, status=status.HTTP_400_BAD_REQUEST)
+
         # Check Balance (Simple PoC: 1 credit per job)
         JOB_COST = Decimal('1.00')
         if user.wallet_balance < JOB_COST:
@@ -45,6 +52,7 @@ class JobSubmissionView(views.APIView):
                 "type": "job_dispatch",
                 "job_data": {
                     "task_id": job.id,
+                    "owner_id": user.id,
                     "model": model,
                     "prompt": prompt
                 }

@@ -275,7 +275,18 @@ class GPUConsumer(AsyncWebsocketConsumer):
 
     async def job_dispatch(self, event):
         """Handler for sending a job to this consumer."""
+        # Only dispatch to registered nodes
+        if not self.provider_user_id:
+            return
+
         job_data = event["job_data"]
+        
+        # PREVENT SELF-INFRASTRUCTURE USAGE
+        # A provider should NOT be serving their own jobs.
+        if job_data.get("owner_id") == self.provider_user_id:
+            logger.info(f"Skipping job {job_data['task_id']} — provider is the owner.")
+            return
+
         await self.send(json.dumps({
             "type": "job_dispatch",
             "job_data": job_data
