@@ -13,13 +13,13 @@ echo.
 cd /d "%~dp0"
 
 REM Build standalone .exe with PyInstaller
-pyinstaller --clean --onefile --name gpu-connect-agent agent_ollama.py --distpath . --noconfirm
+pyinstaller --clean --onefile --name gpu-connect-agent ..\agent_ollama.py --distpath . --noconfirm
 
 REM Copy to frontend downloads folder for web distribution
 if exist gpu-connect-agent.exe (
     echo.
     echo [OK] gpu-connect-agent.exe built successfully
-    copy /Y gpu-connect-agent.exe ..\frontend\public\downloads\gpu-connect.exe >nul 2>&1
+    copy /Y gpu-connect-agent.exe ..\..\frontend\public\downloads\gpu-connect.exe >nul 2>&1
     echo [OK] Copied to frontend/public/downloads/gpu-connect.exe
 ) else (
     echo [FAIL] Build failed!
