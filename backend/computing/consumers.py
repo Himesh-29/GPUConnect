@@ -15,7 +15,8 @@ PROVIDER_SHARE = Decimal("0.80")  # Provider gets 80% of job cost
 class GPUConsumer(AsyncWebsocketConsumer):
     async def connect(self):
         self.node_id = "unknown"
-        self.provider_user_id = None  # Will be set after JWT validation
+        self.provider_user_id = None
+        self.auth_token = None  # Store token for re-validation
         self.group_name = "gpu_nodes"
         await self.channel_layer.group_add(
             self.group_name,
@@ -26,10 +27,23 @@ class GPUConsumer(AsyncWebsocketConsumer):
         self._ping_task = asyncio.ensure_future(self._keep_alive())
 
     async def _keep_alive(self):
-        """Send periodic pings to keep the WebSocket alive during long inference."""
+        """Send periodic pings and RE-VALIDATE token to handle revocation."""
         try:
             while True:
                 await asyncio.sleep(15)
+                
+                # Re-validate token if we are registered
+                if self.auth_token:
+                    user_id = await self._validate_token(self.auth_token)
+                    if not user_id:
+                        logger.warning(f"Token revoked for node {self.node_id}. Disconnecting.")
+                        await self.send(json.dumps({
+                            "type": "auth_error",
+                            "error": "Token revoked or expired."
+                        }, ensure_ascii=False))
+                        await self.close()
+                        return
+
                 await self.send(json.dumps({"type": "ping"}, ensure_ascii=False))
         except Exception:
             pass
@@ -64,6 +78,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
                 await self.close()
                 return
 
+            self.auth_token = auth_token  # Save for keep-alive checks
             self.provider_user_id = user_id
             logger.info(f"Registering Node: {self.node_id} (user_id={user_id})")
 

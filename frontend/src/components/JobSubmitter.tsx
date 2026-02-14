@@ -22,18 +22,27 @@ const JobSubmitter: React.FC = () => {
 
     useEffect(() => {
         fetchModels();
+        const interval = setInterval(fetchModels, 3000);
+        return () => clearInterval(interval);
     }, []);
 
     const fetchModels = async () => {
-        setLoadingModels(true);
+        // Don't show global loading spinner on periodic refetches
+        // setLoadingModels(true); 
         try {
             const resp = await axios.get(`${API_URL}/api/computing/models/`);
-            setModels(resp.data.models || []);
-            if (resp.data.models?.length > 0) {
-                setModel(resp.data.models[0].name);
+            const newModels = resp.data.models || [];
+            setModels(newModels);
+
+            if (newModels.length === 0) {
+                setModel('');
+            } else if (!model || !newModels.find((m: ModelInfo) => m.name === model)) {
+                // If no model selected OR selected model disappeared, pick first available
+                setModel(newModels[0].name);
             }
         } catch {
             setModels([]);
+            setModel('');
         }
         setLoadingModels(false);
     };
@@ -137,10 +146,14 @@ const JobSubmitter: React.FC = () => {
                     disabled={polling || !prompt.trim() || !model}
                     style={{
                         width: '100%',
-                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px'
+                        display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                        cursor: (polling || !prompt.trim() || !model) ? 'not-allowed' : 'pointer',
+                        opacity: (polling || !prompt.trim() || !model) ? 0.7 : 1
                     }}
                 >
-                    {polling ? (
+                    {models.length === 0 ? (
+                        <><Zap size={16} className="opacity-50" /> No Nodes Connected</>
+                    ) : polling ? (
                         <><Loader2 size={16} className="spin" /> Processing...</>
                     ) : (
                         <><Zap size={16} /> Submit Job (1 Credit)</>
