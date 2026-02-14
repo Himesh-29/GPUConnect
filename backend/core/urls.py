@@ -6,6 +6,7 @@ from rest_framework_simplejwt.views import (
 from .views import (
     RegisterView, UserProfileView,
     AgentTokenGenerateView, AgentTokenListView, AgentTokenRevokeView,
+    HealthCheckView,
 )
 
 urlpatterns = [
@@ -17,4 +18,6 @@ urlpatterns = [
     path('agent-token/generate/', AgentTokenGenerateView.as_view(), name='agent-token-generate'),
     path('agent-token/list/', AgentTokenListView.as_view(), name='agent-token-list'),
     path('agent-token/<int:token_id>/revoke/', AgentTokenRevokeView.as_view(), name='agent-token-revoke'),
+    # Health check for cron jobs and monitoring
+    path('health/', HealthCheckView.as_view(), name='health-check'),
 ]

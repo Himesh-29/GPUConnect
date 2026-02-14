@@ -3,6 +3,7 @@ from rest_framework.response import Response
 from .serializers import RegisterSerializer, UserSerializer
 from .models import AgentToken
 from django.contrib.auth import get_user_model
+from django.utils import timezone
 
 User = get_user_model()
 
@@ -76,3 +77,16 @@ class AgentTokenRevokeView(views.APIView):
                 {"error": "Token not found or already revoked."},
                 status=status.HTTP_404_NOT_FOUND
             )
+
+
+class HealthCheckView(views.APIView):
+    """Health check endpoint for cron jobs and monitoring. No auth required."""
+    permission_classes = [permissions.AllowAny]
+
+    def get(self, request):
+        return Response({
+            "status": "healthy",
+            "service": "GPU Connect API",
+            "timestamp": timezone.now().isoformat(),
+            "version": "2.1"
+        })
