@@ -2,9 +2,9 @@
 # exit on error
 set -o errexit
 
-# Install dependencies using uv
-pip install uv
-uv pip install --system -r requirements.txt
+# Install dependencies
+pip install --upgrade pip
+pip install -r requirements.txt
 
 # Create custom migrations directory if it doesn't exist
 mkdir -p custom_migrations/sites
