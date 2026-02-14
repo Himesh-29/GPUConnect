@@ -2,10 +2,12 @@ import asyncio
 import json
 import logging
 import os
+import sys
 import uuid
-import getpass
+import webbrowser
 import aiohttp
 import platform
+from pathlib import Path
 
 # Configuration
 SERVER_URL = os.environ.get("SERVER_URL", "ws://localhost:8000/ws/computing/")
@@ -13,29 +15,63 @@ API_URL = os.environ.get("API_URL", "http://localhost:8000")
 OLLAMA_URL = os.environ.get("OLLAMA_URL", "http://localhost:11434")
 NODE_ID = os.environ.get("NODE_ID", f"node-{uuid.uuid4().hex[:8]}")
 
+# Token storage
+TOKEN_DIR = Path.home() / ".gpuconnect"
+TOKEN_FILE = TOKEN_DIR / "token"
+
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(name)s - %(levelname)s - %(message)s')
 logger = logging.getLogger("GPU-Agent")
 
 
-async def authenticate(username: str, password: str) -> str | None:
-    """Authenticate against the platform and return JWT access token."""
+def save_token(token: str):
+    """Save token to ~/.gpuconnect/token"""
+    TOKEN_DIR.mkdir(parents=True, exist_ok=True)
+    TOKEN_FILE.write_text(token, encoding='utf-8')
+    # Restrict file permissions (owner-only on Unix, best-effort on Windows)
+    try:
+        TOKEN_FILE.chmod(0o600)
+    except Exception:
+        pass
+    logger.info(f"Token saved to {TOKEN_FILE}")
+
+
+def load_token() -> str | None:
+    """Load token from ~/.gpuconnect/token"""
+    if TOKEN_FILE.exists():
+        token = TOKEN_FILE.read_text(encoding='utf-8').strip()
+        if token.startswith("gpc_"):
+            return token
+    return None
+
+
+def clear_token():
+    """Delete stored token."""
+    if TOKEN_FILE.exists():
+        TOKEN_FILE.unlink()
+
+
+async def verify_token(token: str) -> bool:
+    """Quick check that the token is still valid by calling the backend."""
     try:
         async with aiohttp.ClientSession() as session:
-            async with session.post(
-                f"{API_URL}/api/core/token/",
-                json={"username": username, "password": password}
-            ) as resp:
-                if resp.status == 200:
-                    data = await resp.json()
-                    logger.info(f"✅ Authenticated as '{username}'")
-                    return data.get("access")
-                else:
-                    error = await resp.text()
-                    logger.error(f"❌ Authentication failed: {error}")
-                    return None
-    except Exception as e:
-        logger.error(f"❌ Could not reach server: {e}")
-        return None
+            # We'll test by connecting to WebSocket briefly
+            async with session.ws_connect(SERVER_URL, heartbeat=10) as ws:
+                await ws.send_str(json.dumps({
+                    "type": "register",
+                    "node_id": "verify-check",
+                    "auth_token": token,
+                    "gpu_info": {"models": [], "provider": "verify"}
+                }))
+                msg = await asyncio.wait_for(ws.receive(), timeout=5)
+                if msg.type == aiohttp.WSMsgType.TEXT:
+                    data = json.loads(msg.data)
+                    if data.get("type") == "registered":
+                        return True
+                    elif data.get("type") == "auth_error":
+                        return False
+                return False
+    except Exception:
+        return False
 
 
 async def check_ollama_status():
@@ -57,7 +93,7 @@ async def check_ollama_status():
 
 
 async def execute_task(task_data):
-    """Executes a task on local Ollama. Fully async — does not block the event loop."""
+    """Executes a task on local Ollama."""
     task_id = task_data.get('task_id')
     model = task_data.get('model')
     prompt = task_data.get('prompt')
@@ -66,11 +102,7 @@ async def execute_task(task_data):
 
     try:
         async with aiohttp.ClientSession() as session:
-            payload = {
-                "model": model,
-                "prompt": prompt,
-                "stream": False
-            }
+            payload = {"model": model, "prompt": prompt, "stream": False}
             async with session.post(
                 f"{OLLAMA_URL}/api/generate",
                 json=payload,
@@ -105,10 +137,10 @@ async def handle_job(ws, job_data):
 
 
 async def agent_loop(auth_token: str):
-    """Main Agent Loop: Connects to Server, Registers, and Handles Tasks."""
+    """Main Agent Loop: Connects, Registers with token, Handles Tasks."""
     models = await check_ollama_status()
     if not models:
-        logger.warning("No models found or Ollama not running. Agent will start but can't run jobs.")
+        logger.warning("No models found or Ollama not running.")
 
     logger.info(f"Starting agent with NODE_ID={NODE_ID}")
 
@@ -118,7 +150,7 @@ async def agent_loop(auth_token: str):
                 async with session.ws_connect(SERVER_URL, heartbeat=20) as ws:
                     logger.info(f"Connected to Server at {SERVER_URL}")
 
-                    # 1. Register with auth token
+                    # Register with agent token
                     register_msg = {
                         "type": "register",
                         "node_id": NODE_ID,
@@ -131,7 +163,6 @@ async def agent_loop(auth_token: str):
                     }
                     await ws.send_str(json.dumps(register_msg, ensure_ascii=False))
 
-                    # 2. Listen for messages (this loop NEVER blocks on long tasks)
                     async for msg in ws:
                         if msg.type == aiohttp.WSMsgType.TEXT:
                             data = json.loads(msg.data)
@@ -141,8 +172,10 @@ async def agent_loop(auth_token: str):
                                 owner = data.get("owner", "unknown")
                                 logger.info(f"✅ Node registered as {NODE_ID} (owner: {owner})")
                             elif msg_type == "auth_error":
-                                logger.error(f"❌ Authentication rejected: {data.get('error')}")
-                                return  # Stop agent — token invalid
+                                logger.error(f"❌ Token rejected: {data.get('error')}")
+                                clear_token()
+                                logger.info("Stored token cleared. Please re-authenticate.")
+                                return
                             elif msg_type == "job_dispatch":
                                 asyncio.create_task(handle_job(ws, data.get("job_data")))
                             elif msg_type == "ping":
@@ -164,32 +197,59 @@ async def agent_loop(auth_token: str):
         await asyncio.sleep(5)
 
 
+def get_dashboard_url():
+    """Get the frontend dashboard URL."""
+    frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:5173")
+    return f"{frontend_url}/dashboard"
+
+
 def main():
     print(f"""
-╔══════════════════════════════════════════════════╗
-║           GPU Connect Agent v2.0                ║
-║                                                  ║
-║  Node ID:  {NODE_ID:<36} ║
-║  Server:   {API_URL:<36} ║
-║  Ollama:   {OLLAMA_URL:<36} ║
-╚══════════════════════════════════════════════════╝
+╔══════════════════════════════════════════════════════╗
+║             GPU Connect Agent v2.1                  ║
+║                                                      ║
+║  Node ID:  {NODE_ID:<40} ║
+║  Server:   {API_URL:<40} ║
+║  Ollama:   {OLLAMA_URL:<40} ║
+╚══════════════════════════════════════════════════════╝
 """)
 
-    # --- CLI Authentication ---
-    print("  Login to GPU Connect to start earning credits.\n")
-    username = input("  Username: ").strip()
-    password = getpass.getpass("  Password: ").strip()
+    # --- Check for stored token ---
+    token = load_token()
 
-    if not username or not password:
-        print("  ❌ Username and password are required.")
-        return
+    if token:
+        print(f"  ✅ Found saved token: {token[:12]}...")
+        print("  Verifying token...\n")
+        # Don't verify interactively — just try to connect. 
+        # If the token is invalid, the server will send auth_error 
+        # and the agent will clear the token and exit.
+    else:
+        print("  ⚡ First-time setup — you need to generate an Agent Token.\n")
+        print("  1. Open your browser to the GPU Connect Dashboard")
+        print("  2. Go to the 'Provider' tab")
+        print("  3. Click 'Generate Agent Token'")
+        print("  4. Copy the token and paste it below\n")
 
-    token = asyncio.run(authenticate(username, password))
-    if not token:
-        print("\n  ❌ Login failed. Check credentials and try again.")
-        return
+        # Try to open browser
+        dashboard_url = get_dashboard_url()
+        print(f"  Opening {dashboard_url} ...\n")
+        try:
+            webbrowser.open(dashboard_url)
+        except Exception:
+            print(f"  (Could not open browser. Please navigate to {dashboard_url} manually)\n")
 
-    print(f"\n  ✅ Logged in as '{username}'. Starting GPU agent...\n")
+        token = input("  Paste your Agent Token: ").strip()
+
+        if not token or not token.startswith("gpc_"):
+            print("\n  ❌ Invalid token. Token must start with 'gpc_'.")
+            print("  Generate one from the Dashboard → Provider tab.\n")
+            return
+
+        save_token(token)
+        print(f"\n  ✅ Token saved to {TOKEN_FILE}")
+        print("  You won't need to paste it again.\n")
+
+    print("  Starting GPU agent...\n")
 
     try:
         asyncio.run(agent_loop(token))

@@ -261,6 +261,167 @@ const LiveModels = () => {
 };
 
 
+/* ===== AGENT TOKEN MANAGER ===== */
+const AgentTokenManager = ({ token }: { token: string | null }) => {
+  const [tokens, setTokens] = useState<any[]>([]);
+  const [newToken, setNewToken] = useState<string | null>(null);
+  const [label, setLabel] = useState('');
+  const [generating, setGenerating] = useState(false);
+  const [copied, setCopied] = useState(false);
+
+  const fetchTokens = async () => {
+    try {
+      const resp = await axios.get(`${API_URL}/api/core/agent-token/list/`, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setTokens(resp.data);
+    } catch { /* ignore */ }
+  };
+
+  useEffect(() => { fetchTokens(); }, []);
+
+  const generateToken = async () => {
+    setGenerating(true);
+    try {
+      const resp = await axios.post(`${API_URL}/api/core/agent-token/generate/`, {
+        label: label || 'Default Agent'
+      }, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      setNewToken(resp.data.token);
+      setLabel('');
+      fetchTokens();
+    } catch (err: any) {
+      alert(err.response?.data?.error || 'Failed to generate token');
+    }
+    setGenerating(false);
+  };
+
+  const revokeToken = async (id: number) => {
+    if (!confirm('Revoke this token? Any agent using it will be disconnected.')) return;
+    try {
+      await axios.post(`${API_URL}/api/core/agent-token/${id}/revoke/`, {}, {
+        headers: { Authorization: `Bearer ${token}` }
+      });
+      fetchTokens();
+    } catch { /* ignore */ }
+  };
+
+  const copyToken = () => {
+    if (newToken) {
+      navigator.clipboard.writeText(newToken);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <div className="glass-card">
+      <div className="card-header">
+        <h3>🔑 Agent Tokens</h3>
+        <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Secure authentication for GPU agents</span>
+      </div>
+
+      {/* Generate Token */}
+      <div style={{
+        display: 'flex', gap: '8px', marginBottom: '16px', alignItems: 'center'
+      }}>
+        <input
+          type="text"
+          placeholder="Token label (e.g. 'Home PC')"
+          value={label}
+          onChange={e => setLabel(e.target.value)}
+          style={{
+            flex: 1, padding: '8px 12px', borderRadius: '6px', fontSize: '13px',
+            background: 'rgba(255,255,255,0.04)', border: '1px solid var(--border)',
+            color: 'var(--text-primary)', fontFamily: 'var(--font-body)'
+          }}
+        />
+        <button
+          className="btn-primary-sm"
+          onClick={generateToken}
+          disabled={generating}
+          style={{ whiteSpace: 'nowrap' }}
+        >
+          {generating ? 'Generating...' : '+ Generate Token'}
+        </button>
+      </div>
+
+      {/* Show new token (once) */}
+      {newToken && (
+        <div style={{
+          padding: '16px', borderRadius: '10px', marginBottom: '16px',
+          background: 'rgba(34,197,94,0.08)', border: '1px solid rgba(34,197,94,0.25)'
+        }}>
+          <div style={{ fontSize: '12px', color: 'var(--success)', fontWeight: 700, marginBottom: '8px' }}>
+            ⚠️ SAVE THIS TOKEN — It will NOT be shown again!
+          </div>
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: '8px',
+            background: 'rgba(0,0,0,0.3)', padding: '10px 14px', borderRadius: '8px',
+            fontFamily: 'monospace', fontSize: '13px', color: 'var(--text-primary)',
+            wordBreak: 'break-all'
+          }}>
+            <span style={{ flex: 1 }}>{newToken}</span>
+            <button
+              onClick={copyToken}
+              style={{
+                padding: '4px 12px', borderRadius: '4px', fontSize: '11px', fontWeight: 700,
+                background: copied ? 'rgba(34,197,94,0.2)' : 'rgba(255,255,255,0.1)',
+                color: copied ? 'var(--success)' : 'var(--text-primary)',
+                border: 'none', cursor: 'pointer', whiteSpace: 'nowrap'
+              }}
+            >
+              {copied ? '✓ Copied!' : 'Copy'}
+            </button>
+          </div>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
+            Run the agent and paste this token when prompted.
+          </div>
+        </div>
+      )}
+
+      {/* Active tokens list */}
+      {tokens.length > 0 ? (
+        <div style={{ display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          {tokens.map(t => (
+            <div key={t.id} style={{
+              display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+              padding: '10px 14px', borderRadius: '8px',
+              background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <span style={{ fontSize: '16px' }}>🔑</span>
+                <div>
+                  <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--text-primary)' }}>{t.label}</div>
+                  <div style={{ fontSize: '11px', color: 'var(--text-muted)' }}>
+                    {t.token_prefix} · Created {new Date(t.created_at).toLocaleDateString()}
+                    {t.last_used && ` · Last used ${new Date(t.last_used).toLocaleString()}`}
+                  </div>
+                </div>
+              </div>
+              <button
+                onClick={() => revokeToken(t.id)}
+                style={{
+                  padding: '4px 12px', borderRadius: '4px', fontSize: '11px', fontWeight: 700,
+                  background: 'rgba(239,68,68,0.1)', color: 'var(--error)',
+                  border: '1px solid rgba(239,68,68,0.2)', cursor: 'pointer'
+                }}
+              >
+                Revoke
+              </button>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <p style={{ fontSize: '13px', color: 'var(--text-muted)', textAlign: 'center', padding: '10px' }}>
+          No active tokens. Generate one to connect your GPU agent.
+        </p>
+      )}
+    </div>
+  );
+};
+
 /* ===== PROVIDER DASHBOARD TAB ===== */
 const CHART_COLORS = ['#d4a037', '#f0c95c', '#b8860b', '#ffd700', '#e6b800', '#cc9900'];
 
@@ -315,6 +476,9 @@ const ProviderDashboard = ({ token }: { token: string | null }) => {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+      {/* --- Agent Token Management --- */}
+      <AgentTokenManager token={token} />
+
       {/* --- Period Filter --- */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <h3 style={{ margin: 0, color: 'var(--text-primary)' }}>Provider Analytics</h3>

@@ -104,15 +104,17 @@ class GPUConsumer(AsyncWebsocketConsumer):
 
     @database_sync_to_async
     def _validate_token(self, token):
-        """Validate a JWT access token and return user_id, or None."""
+        """Validate an agent token (gpc_...) and return user_id, or None."""
         if not token:
             return None
         try:
-            from rest_framework_simplejwt.tokens import AccessToken
-            access = AccessToken(token)
-            return access['user_id']
+            from core.models import AgentToken
+            agent_token = AgentToken.validate(token)
+            if agent_token:
+                return agent_token.user_id
+            return None
         except Exception as e:
-            logger.warning(f"JWT validation failed: {e}")
+            logger.warning(f"Token validation failed: {e}")
             return None
 
     @database_sync_to_async
