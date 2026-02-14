@@ -121,18 +121,14 @@ jobs:
           # Run Bandit and produce JSON results
           bandit -r backend/ -f json -o bandit-results.json --severity-level medium
           # Fail if any results are present (medium+ severity)
-          python3 - <<'PY'
-import json,sys
-try:
-    with open('bandit-results.json') as f:
-        data=json.load(f)
-except Exception:
-    sys.exit(0)
-if data.get('results'):
-    print('Bandit found security issues: failing workflow')
-    sys.exit(1)
-print('Bandit clean')
-PY
+          if [ -s bandit-results.json ]; then
+            RESULT_COUNT=$(python3 -c "import json; data=json.load(open('bandit-results.json')); print(len(data.get('results', [])))")
+            if [ "$RESULT_COUNT" -gt 0 ]; then
+              echo "Bandit found $RESULT_COUNT security issues - failing workflow"
+              exit 1
+            fi
+          fi
+          echo "Bandit scan complete - no medium+ issues found"
 
       - name: Upload Bandit report
         if: always()
