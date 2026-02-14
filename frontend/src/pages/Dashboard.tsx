@@ -668,7 +668,10 @@ const ProviderDashboard = ({ token }: { token: string | null }) => {
 /* ===== MAIN DASHBOARD ===== */
 export const Dashboard: React.FC = () => {
   const { user, token, logout } = useAuth();
-  const [activeTab, setActiveTab] = useState('overview');
+  const [activeTab, setActiveTab] = useState(() => {
+    const params = new URLSearchParams(window.location.search);
+    return params.get('tab') || 'overview';
+  });
   const [balance, setBalance] = useState<number>(0);
 
   const refreshBalance = async () => {

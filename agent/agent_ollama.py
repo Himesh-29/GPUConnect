@@ -175,6 +175,8 @@ async def agent_loop(auth_token: str):
                                 logger.error(f"❌ Token rejected: {data.get('error')}")
                                 clear_token()
                                 logger.info("Stored token cleared. Please re-authenticate.")
+                                print("\n  ❌ Authentication failed. Token revoked or invalid.")
+                                input("  Press Enter to exit...")
                                 return
                             elif msg_type == "job_dispatch":
                                 asyncio.create_task(handle_job(ws, data.get("job_data")))
@@ -200,7 +202,7 @@ async def agent_loop(auth_token: str):
 def get_dashboard_url():
     """Get the frontend dashboard URL."""
     frontend_url = os.environ.get("FRONTEND_URL", "http://localhost:5173")
-    return f"{frontend_url}/dashboard"
+    return f"{frontend_url}/dashboard?tab=provider"
 
 
 def main():
@@ -243,6 +245,7 @@ def main():
         if not token or not token.startswith("gpc_"):
             print("\n  ❌ Invalid token. Token must start with 'gpc_'.")
             print("  Generate one from the Dashboard → Provider tab.\n")
+            input("  Press Enter to exit...")
             return
 
         save_token(token)
