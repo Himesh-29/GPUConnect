@@ -75,13 +75,13 @@ MIDDLEWARE = [
 
 # SESSION / CSRF SETTINGS FOR LOCALHOST DEV
 # Essential for OAuth callback to work across ports (5173 -> 8000)
-# Use None/True to allow cross-site (cross-port) cookies on localhost
-SESSION_COOKIE_SAMESITE = 'None'
-CSRF_COOKIE_SAMESITE = 'None'
-SESSION_COOKIE_SECURE = True
-CSRF_COOKIE_SECURE = True
+# NOTE: SameSite='None' REQUIRED Secure=True. Since we use HTTP in dev, use 'Lax'.
+SESSION_COOKIE_SAMESITE = 'Lax'
+CSRF_COOKIE_SAMESITE = 'Lax'
+SESSION_COOKIE_SECURE = not DEBUG  # True only in production (HTTPS)
+CSRF_COOKIE_SECURE = not DEBUG     # True only in production (HTTPS)
 SESSION_COOKIE_DOMAIN = None
-CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173"]
+CSRF_TRUSTED_ORIGINS = ["http://localhost:5173", "http://127.0.0.1:5173", "http://localhost:8000"]
 
 ROOT_URLCONF = "config.urls"
 
@@ -99,6 +99,22 @@ TEMPLATES = [
         },
     },
 ]
+
+LOGGING = {
+    'version': 1,
+    'disable_existing_loggers': False,
+    'handlers': {
+        'console': {
+            'class': 'logging.StreamHandler',
+        },
+    },
+    'loggers': {
+        'allauth': {
+            'handlers': ['console'],
+            'level': 'DEBUG',
+        },
+    },
+}
 
 WSGI_APPLICATION = "config.wsgi.application"
 ASGI_APPLICATION = "config.asgi.application"
@@ -232,7 +248,10 @@ ACCOUNT_SIGNUP_FIELDS = [
 ]
 
 SOCIALACCOUNT_AUTO_SIGNUP = True
+SOCIALACCOUNT_EMAIL_AUTHENTICATION = True
+SOCIALACCOUNT_EMAIL_AUTHENTICATION_AUTO_CONNECT = True
 SOCIALACCOUNT_LOGIN_ON_GET = True  # Skip "Continue?" interstitial
+SOCIALACCOUNT_ADAPTER = 'core.adapters.MySocialAccountAdapter'
 
 # Frontend URL for OAuth redirects
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
@@ -253,7 +272,8 @@ SOCIALACCOUNT_PROVIDERS = {
             "client_id": os.environ.get("GITHUB_CLIENT_ID", ""),
             "secret": os.environ.get("GITHUB_CLIENT_SECRET", ""),
         },
-        "SCOPE": ["user:email"],
+        "SCOPE": ["user:email", "read:user"],
+        "VERIFIED_EMAIL": False, # Don't block if email isn't verified
     },
     "microsoft": {
         "APP": {
