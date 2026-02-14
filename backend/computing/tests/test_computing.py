@@ -43,7 +43,7 @@ class TestComputingSystem:
         """Job stays PENDING when no active nodes exist."""
         self.node.is_active = False
         self.node.save()
-        
+
         job = Job.objects.create(
             user=self.user,
             task_type='training',

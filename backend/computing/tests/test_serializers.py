@@ -1,7 +1,7 @@
 """Tests for computing serializers."""
-from django.test import TestCase
 from django.contrib.auth import get_user_model
-from rest_framework.test import APIClient
+from django.test import TestCase
+
 from ..models import Node, Job
 from ..serializers import NodeSerializer, JobSerializer
 
@@ -14,15 +14,14 @@ class NodeSerializerTests(TestCase):
     def setUp(self):
         """Set up test data."""
         self.user = User.objects.create_user(
-            username='provider',
-            password='pass'
+            username='provider', password='pass'
         )
         self.node = Node.objects.create(
             owner=self.user,
             node_id='test-node',
             name='Test Node',
             gpu_info={'gpu_model': 'RTX 4090', 'count': 1},
-            is_active=True
+            is_active=True,
         )
 
     def test_serialize_node(self):
@@ -54,25 +53,23 @@ class JobSerializerTests(TestCase):
     def setUp(self):
         """Set up test data."""
         self.user = User.objects.create_user(
-            username='user',
-            password='pass'
+            username='user', password='pass'
         )
         self.provider = User.objects.create_user(
-            username='provider',
-            password='pass'
+            username='provider', password='pass'
         )
         self.node = Node.objects.create(
             owner=self.provider,
             node_id='test-node',
             name='Test Node',
             gpu_info={'count': 1},
-            is_active=True
+            is_active=True,
         )
         self.job = Job.objects.create(
             user=self.user,
             node=self.node,
             task_type='inference',
-            input_data={'prompt': 'test', 'model': 'llama2'}
+            input_data={'prompt': 'test', 'model': 'llama2'},
         )
 
     def test_serialize_job(self):
@@ -98,16 +95,13 @@ class JobSerializerTests(TestCase):
 
     def test_create_job_via_serializer(self):
         """JobSerializer can create a new Job."""
-        try:
-            data = {
-                'user': self.user.id,
-                'node': self.node.id,
-                'task_type': 'training',
-                'input_data': {'epochs': 10}
-            }
-            serializer = JobSerializer(data=data)
-            if serializer.is_valid():
-                job = serializer.save()
-                self.assertEqual(job.task_type, 'training')
-        except Exception:
-            pass
+        data = {
+            'task_type': 'training',
+            'input_data': {'epochs': 10},
+        }
+        serializer = JobSerializer(data=data)
+        self.assertTrue(serializer.is_valid(), serializer.errors)
+        job = serializer.save(user=self.user, node=self.node)
+        self.assertEqual(job.task_type, 'training')
+        self.assertEqual(job.user, self.user)
+        self.assertEqual(job.node, self.node)

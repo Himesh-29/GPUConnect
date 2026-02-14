@@ -26,3 +26,26 @@ dependencies = [
     "websockets>=16.0",
     "whitenoise>=6.11.0",
 ]
+
+# ── Pylint Configuration ──────────────────────────────────────────────
+[tool.pylint.main]
+load-plugins = ["pylint_django"]
+django-settings-module = "config.settings"
+ignore-patterns = ["0\\d+.*\\.py"]     # ignore auto-generated migration files
+ignore = ["manage.py", "custom_migrations"]
+
+[tool.pylint."messages control"]
+disable = [
+    "import-error",                  # handled by Django / runtime imports
+    "too-few-public-methods",        # DRF Meta classes, small test classes
+    "attribute-defined-outside-init", # pytest setup_method pattern
+    "duplicate-code",                # test setup boilerplate
+    "broad-exception-caught",        # legitimate in WebSocket error handling
+    "arguments-renamed",             # WebSocket method overrides
+    "arguments-differ",              # WebSocket method overrides
+    "import-outside-toplevel",       # lazy imports in consumers / manage.py
+    "missing-function-docstring",    # test helper methods
+]
+
+[tool.pylint.format]
+max-line-length = 120

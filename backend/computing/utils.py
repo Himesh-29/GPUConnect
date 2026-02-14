@@ -6,8 +6,8 @@ from django.db.models import Count, Sum
 from django.db.models.functions import TruncDate
 from django.utils import timezone
 
-from .models import Job, Node
 from payments.models import CreditLog
+from .models import Job, Node
 
 
 def get_provider_stats(user, days=30):  # pylint: disable=too-many-locals

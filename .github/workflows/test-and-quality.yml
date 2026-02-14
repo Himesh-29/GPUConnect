@@ -120,14 +120,14 @@ jobs:
         run: |
           cd backend
           uv sync
-          uv pip install pylint radon bandit
+          uv pip install pylint pylint-django radon bandit
 
       - name: Run Pylint (code smells, style issues)
         id: pylint
         continue-on-error: true
         run: |
           cd backend
-          uv run pylint --exit-zero --disable=import-error --output-format=parseable $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*" ! -path "*/.venv/*") > pylint-results.txt 2>&1 || true
+          uv run pylint --exit-zero --output-format=parseable $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*" ! -path "*/.venv/*" ! -path "./manage.py" ! -path "./custom_migrations/*") > pylint-results.txt 2>&1 || true
           cat pylint-results.txt
 
       - name: Run Radon (complexity analysis)

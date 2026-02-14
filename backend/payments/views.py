@@ -14,6 +14,7 @@ class WalletBalanceView(APIView):
     permission_classes = (permissions.IsAuthenticated,)
 
     def get(self, request):
+        """Return wallet balance and recent credit log entries."""
         logs = CreditLog.objects.filter(user=request.user).order_by('-created_at')
         serializer = CreditLogSerializer(logs, many=True)
         return Response({
@@ -38,6 +39,7 @@ class MockPaymentWebhookView(APIView):
     Simulates a webhook from Stripe/Razorpay to confirm payment.
     """
     def post(self, _request, transaction_id):
+        """Process a simulated payment webhook for the given transaction."""
         # Secure this endpoint in production!
         success = CreditService.process_transaction(transaction_id)
         if success:
