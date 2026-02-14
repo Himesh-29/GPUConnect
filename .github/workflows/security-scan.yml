@@ -64,8 +64,15 @@ jobs:
       - name: Scan Python dependencies
         run: |
           cd backend
-          # Fail the job if any vulnerabilities >= medium are found
-          pip-audit -r requirements.txt --format json --output ../pip-audit-results.json --fail-on=medium
+          # Generate JSON report
+          pip-audit -r requirements.txt --format json --output ../pip-audit-results.json
+          # Check if vulnerabilities found and fail if any exist
+          VULN_COUNT=$(python3 -c "import json; data=json.load(open('../pip-audit-results.json')); print(len(data.get('vulnerabilities', [])))" 2>/dev/null || echo "0")
+          if [ "$VULN_COUNT" -gt 0 ]; then
+            echo "pip-audit found $VULN_COUNT vulnerabilities - failing workflow"
+            exit 1
+          fi
+          echo "pip-audit scan complete - no vulnerabilities found"
 
       - name: Upload pip-audit report
         if: always()
@@ -86,8 +93,15 @@ jobs:
         run: |
           cd frontend
           npm ci
-          # Fail the job if any vulnerabilities >= moderate are found
-          npm audit --audit-level=moderate --json > ../npm-audit-results.json
+          set +e
+          npm audit --json > ../npm-audit-results.json
+          AUDIT_EXIT=$?
+          set -e
+          if [ $AUDIT_EXIT -ne 0 ]; then
+            echo "npm audit found vulnerabilities - failing workflow"
+            exit 1
+          fi
+          echo "npm audit scan complete - no vulnerabilities found"
 
       - name: Upload npm audit report
         if: always()
