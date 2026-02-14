@@ -81,6 +81,18 @@ npm run dev
 ```
 Visit `http://localhost:5173` to launch the application.
 
+## ⚙️ Make Commands
+
+Run from the project root (Windows: `.\make.bat`, Linux/Mac: `make`):
+
+| Command | Description |
+|---------|-------------|
+| `make agent` | Build standalone `gpu-connect-agent.exe` via PyInstaller |
+| `make clean` | Remove all build artifacts (build/, dist/, .spec) |
+| `make dev` | Start backend + frontend dev servers in new windows |
+| `make test` | Run the full backend test suite |
+| `make help` | Show all available commands |
+
 ## 🧪 Testing
 
 Run the full backend test suite:
