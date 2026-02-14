@@ -1,15 +1,13 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState } from 'react';
 import { BrowserRouter as Router, Routes, Route, Link, useNavigate, useLocation } from 'react-router-dom';
 import { AuthProvider, useAuth } from './context/AuthContext';
+import { DashboardProvider, useDashboard } from './context/DashboardContext';
 import { Login } from './pages/Login';
 import { Register } from './pages/Register';
 import { Dashboard } from './pages/Dashboard';
 import { OAuthCallback } from './pages/OAuthCallback';
-import axios from 'axios';
 import './App.css';
 import './pages/Auth.css';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 /* ===== Scroll-to-section helper ===== */
 const scrollToSection = (id: string) => {
@@ -75,17 +73,10 @@ const Navigation = ({ toggleMenu, isMenuOpen }: any) => {
 
 /* ===== Live Models Marketplace ===== */
 const Marketplace = () => {
-  const [data, setData] = useState<any>(null);
-
-  useEffect(() => {
-    const fetchModels = () => {
-      axios.get(`${API_URL}/api/computing/models/`).then(r => setData(r.data)).catch(() => {});
-    };
-    fetchModels();
-    const interval = setInterval(fetchModels, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
+  const { models, loading } = useDashboard();
+  
+  // No polling needed! models are streaming.
+  
   return (
     <section id="marketplace" className="section-padding bg-dark-alt">
       <div className="container">
@@ -97,9 +88,9 @@ const Marketplace = () => {
           </p>
         </div>
 
-        {data && data.models.length > 0 ? (
+        {models.length > 0 ? (
           <div className="features-grid">
-            {data.models.map((m: any) => (
+            {models.map((m: any) => (
               <div key={m.name} className="feature-card" style={{ display: 'flex', flexDirection: 'column', gap: '12px' }}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
                   <h3 style={{ fontSize: '1.1rem' }}>{m.name}</h3>
@@ -130,7 +121,7 @@ const Marketplace = () => {
         ) : (
           <div style={{ textAlign: 'center', padding: '60px 0' }}>
             <p style={{ color: 'var(--text-muted)', fontSize: '16px' }}>
-              {data ? 'No GPU nodes are currently online. Be the first provider!' : 'Loading marketplace...'}
+              {!loading ? 'No GPU nodes are currently online. Be the first provider!' : 'Loading marketplace...'}
             </p>
             <Link to="/register" className="btn-primary" style={{ display: 'inline-block', marginTop: '20px' }}>
               Become a Provider
@@ -139,7 +130,7 @@ const Marketplace = () => {
         )}
 
         <div style={{ textAlign: 'center', marginTop: '40px', color: 'var(--text-muted)', fontSize: '13px' }}>
-          <strong style={{ color: 'var(--text-secondary)' }}>{data?.total_nodes || 0}</strong> nodes connected to the network
+          <strong style={{ color: 'var(--text-secondary)' }}>{models.reduce((acc, M) => acc + M.providers, 0) || 0}</strong> nodes providing models
         </div>
       </div>
     </section>
@@ -243,16 +234,8 @@ const IntegrateSection = () => (
 
 /* ===== Landing Page ===== */
 const LandingPage = () => {
-  const [stats, setStats] = useState<any>(null);
-  useEffect(() => {
-    const fetchStats = () => {
-      axios.get(`${API_URL}/api/computing/stats/`).then(r => setStats(r.data)).catch(() => {});
-    };
-    fetchStats();
-    const interval = setInterval(fetchStats, 2000);
-    return () => clearInterval(interval);
-  }, []);
-
+  const { stats } = useDashboard();
+  
   return (
     <>
       {/* Hero */}
@@ -422,16 +405,18 @@ function App() {
   return (
     <Router>
       <AuthProvider>
-        <div className="App">
-          <Navigation toggleMenu={toggleMenu} isMenuOpen={isMenuOpen} />
-          <Routes>
-            <Route path="/" element={<LandingPage />} />
-            <Route path="/login" element={<Login />} />
-            <Route path="/register" element={<Register />} />
-            <Route path="/oauth/callback" element={<OAuthCallback />} />
-            <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
-          </Routes>
-        </div>
+        <DashboardProvider>
+          <div className="App">
+            <Navigation toggleMenu={toggleMenu} isMenuOpen={isMenuOpen} />
+            <Routes>
+              <Route path="/" element={<LandingPage />} />
+              <Route path="/login" element={<Login />} />
+              <Route path="/register" element={<Register />} />
+              <Route path="/oauth/callback" element={<OAuthCallback />} />
+              <Route path="/dashboard" element={<ProtectedRoute><Dashboard /></ProtectedRoute>} />
+            </Routes>
+          </div>
+        </DashboardProvider>
       </AuthProvider>
     </Router>
   );

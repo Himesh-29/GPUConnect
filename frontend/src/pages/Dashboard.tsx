@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { useAuth } from '../context/AuthContext';
+import { useDashboard } from '../context/DashboardContext';
 import { LayoutDashboard, Wallet, Server, Activity, RefreshCw, TrendingUp, Cpu, ArrowUpRight, ArrowDownRight, Filter } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import JobSubmitter from '../components/JobSubmitter';
@@ -46,32 +47,12 @@ const WalletCard = ({ balance, onRefresh }: { balance: number, onRefresh: () => 
 );
 
 /* ===== Job History ===== */
-interface JobData {
-  id: number; status: string; prompt: string; model: string;
-  cost: string | null; result: any; created_at: string; completed_at: string | null;
-}
-
-const JobHistory = ({ token }: { token: string | null }) => {
-  const [jobs, setJobs] = useState<JobData[]>([]);
-  const [loading, setLoading] = useState(true);
+const JobHistory = () => {
+  const { recentJobs } = useDashboard();
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
-  const fetchJobs = async (silent = false) => {
-    if (!silent) setLoading(true);
-    try {
-      const resp = await axios.get(`${API_URL}/api/computing/jobs/`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setJobs(resp.data);
-    } catch { /* ignore */ }
-    setLoading(false);
-  };
-
-  useEffect(() => {
-    fetchJobs();
-    const interval = setInterval(() => fetchJobs(true), 2000);
-    return () => clearInterval(interval);
-  }, []);
+  // Using streaming jobs from context
+  const jobs = recentJobs;
 
   const statusStyle = (s: string) => {
     const colors: Record<string, string> = {
@@ -102,11 +83,9 @@ const JobHistory = ({ token }: { token: string | null }) => {
             <option value="PENDING">Pending</option>
             <option value="FAILED">Failed</option>
           </select>
-          <button className="btn-icon" onClick={() => fetchJobs()}><RefreshCw size={14} /></button>
         </div>
       </div>
-      {loading ? <p style={{ color: 'var(--text-muted)' }}>Loading...</p> :
-        filtered.length === 0 ? (
+      {jobs.length === 0 ? (
           <div className="empty-state">
             <Activity size={40} className="opacity-50" style={{ color: 'var(--accent)' }} />
             <p>No jobs {statusFilter !== 'ALL' ? `with status ${statusFilter}` : 'submitted yet'}</p>
@@ -158,16 +137,9 @@ const JobHistory = ({ token }: { token: string | null }) => {
 
 /* ===== Nodes Panel ===== */
 const NodesPanel = () => {
-  const [stats, setStats] = useState<any>(null);
-
-  useEffect(() => {
-    const fetchStats = () => {
-      axios.get(`${API_URL}/api/computing/stats/`).then(r => setStats(r.data)).catch(() => {});
-    };
-    fetchStats();
-    const interval = setInterval(fetchStats, 2000);
-    return () => clearInterval(interval);
-  }, []);
+  const { stats } = useDashboard();
+  
+  // Stats are streaming now!
 
   return (
     <div className="glass-card">
@@ -175,11 +147,11 @@ const NodesPanel = () => {
         <h3>Network</h3>
         <span style={{
           display: 'flex', alignItems: 'center', gap: '6px',
-          fontSize: '12px', color: stats?.active_nodes > 0 ? 'var(--success)' : 'var(--text-muted)'
+          fontSize: '12px', color: (stats?.active_nodes || 0) > 0 ? 'var(--success)' : 'var(--text-muted)'
         }}>
           <span style={{
             width: 6, height: 6, borderRadius: '50%',
-            background: stats?.active_nodes > 0 ? 'var(--success)' : 'var(--text-muted)',
+            background: (stats?.active_nodes || 0) > 0 ? 'var(--success)' : 'var(--text-muted)',
             display: 'inline-block'
           }} />
           {stats?.active_nodes || 0} node{stats?.active_nodes !== 1 ? 's' : ''} online
@@ -194,10 +166,6 @@ const NodesPanel = () => {
           <div>
             <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)' }}>{stats.available_models}</div>
             <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Models</div>
-          </div>
-          <div>
-            <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--text-primary)' }}>{stats.total_jobs}</div>
-            <div style={{ fontSize: '12px', color: 'var(--text-muted)' }}>Total Jobs</div>
           </div>
           <div>
             <div style={{ fontSize: '24px', fontWeight: 700, color: 'var(--success)' }}>{stats.completed_jobs}</div>
@@ -216,16 +184,7 @@ const NodesPanel = () => {
 
 /* ===== Live Models ===== */
 const LiveModels = () => {
-  const [models, setModels] = useState<any[]>([]);
-
-  useEffect(() => {
-    const fetchModels = () => {
-      axios.get(`${API_URL}/api/computing/models/`).then(r => setModels(r.data.models || [])).catch(() => {});
-    };
-    fetchModels();
-    const interval = setInterval(fetchModels, 2000);
-    return () => clearInterval(interval);
-  }, []);
+  const { models } = useDashboard();
 
   return (
     <div className="glass-card" style={{ gridColumn: '1 / -1' }}>
@@ -668,27 +627,11 @@ const ProviderDashboard = ({ token }: { token: string | null }) => {
 /* ===== MAIN DASHBOARD ===== */
 export const Dashboard: React.FC = () => {
   const { user, token, logout } = useAuth();
+  const { balance } = useDashboard();
   const [activeTab, setActiveTab] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('tab') || 'overview';
   });
-  const [balance, setBalance] = useState<number>(0);
-
-  const refreshBalance = async () => {
-    try {
-      const resp = await axios.get(`${API_URL}/api/core/profile/`, {
-        headers: { Authorization: `Bearer ${token}` }
-      });
-      setBalance(Number(resp.data.wallet_balance));
-    } catch { /* ignore */ }
-  };
-
-  useEffect(() => {
-    if (user) setBalance(Number(user.wallet_balance));
-    refreshBalance();
-    const interval = setInterval(refreshBalance, 2000);
-    return () => clearInterval(interval);
-  }, [user]);
 
   if (!user) return <div style={{ padding: '100px', textAlign: 'center', color: 'var(--text-muted)' }}>Loading...</div>;
 
@@ -722,9 +665,9 @@ export const Dashboard: React.FC = () => {
         </header>
 
         <div className="dashboard-grid">
-          <WalletCard balance={balance} onRefresh={refreshBalance} />
+          <WalletCard balance={balance || 0} onRefresh={() => {}} />
 
-          <StatCard label="Credits Earned" value={`$${Math.max(0, balance - 100 + (100 - balance < 0 ? 0 : 100 - balance)).toFixed(0)}`} sub="from providing" color="var(--success)" icon={TrendingUp} />
+          <StatCard label="Credits Earned" value={`$${Math.max(0, (balance || 0) - 100 + (100 - (balance || 0) < 0 ? 0 : 100 - (balance || 0))).toFixed(0)}`} sub="from providing" color="var(--success)" icon={TrendingUp} />
 
           <StatCard label="Cost Per Job" value="$1.00" sub="per inference" />
 
@@ -733,7 +676,7 @@ export const Dashboard: React.FC = () => {
               <div className="overview-grid">
                 <JobSubmitter />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <JobHistory token={token} />
+                  <JobHistory />
                   <NodesPanel />
                   <LiveModels />
                 </div>
@@ -750,7 +693,7 @@ export const Dashboard: React.FC = () => {
                 <div style={{ display: 'flex', gap: '40px', marginTop: '20px' }}>
                   <div>
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Current Balance</div>
-                    <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--accent)' }}>${balance.toFixed(2)}</div>
+                    <div style={{ fontSize: '2rem', fontWeight: 700, color: 'var(--accent)' }}>${(balance || 0).toFixed(2)}</div>
                   </div>
                   <div>
                     <div style={{ fontSize: '12px', color: 'var(--text-muted)', textTransform: 'uppercase', marginBottom: '4px' }}>Starting Balance</div>

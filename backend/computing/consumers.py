@@ -26,6 +26,73 @@ class GPUConsumer(AsyncWebsocketConsumer):
         logger.info("WebSocket Connected")
         self._ping_task = asyncio.ensure_future(self._keep_alive())
 
+    async def _broadcast_dashboard_update(self):
+        """Trigger a recalculation and broadcast to dashboard consumers."""
+        # We re-calculate stats and broadcast. 
+        # Ideally we'd just send the delta, but full refresh is safer for consistency.
+        # We can implement a static helper or just duplicate logic slightly or make DashboardConsumer methods static?
+        # Better: Send a "trigger" message to DashboardConsumer group telling them to refresh?
+        # NO, that causes N refreshes.
+        # Best: Calculate here and send.
+        
+        # We need to run DB queries.
+        stats = await self._get_stats()
+        models = await self._get_models()
+        
+        await self.channel_layer.group_send(
+            "dashboard_updates",
+            {
+                "type": "dashboard_update",
+                "data": {
+                    "type": "stats_update",
+                    "stats": stats
+                }
+            }
+        )
+        await self.channel_layer.group_send(
+            "dashboard_updates",
+            {
+                "type": "dashboard_update",
+                "data": {
+                    "type": "models_update",
+                    "models": models
+                }
+            }
+        )
+
+    # Re-use the logic from DashboardConsumer by moving it to a helper or just duplicating (it's small)
+    @database_sync_to_async
+    def _get_stats(self):
+        from .models import Node, Job
+        active_nodes = Node.objects.filter(is_active=True).count()
+        completed_jobs = Job.objects.filter(status="COMPLETED").count()
+        models = self._get_models_sync_shared()
+        return {
+            "active_nodes": active_nodes,
+            "completed_jobs": completed_jobs,
+            "available_models": len(models)
+        }
+
+    @database_sync_to_async
+    def _get_models(self):
+        return self._get_models_sync_shared()
+    
+    def _get_models_sync_shared(self):
+        from .models import Node
+        nodes = Node.objects.filter(is_active=True)
+        model_counts = {}
+        for node in nodes:
+            info = node.gpu_info or {}
+            models = info.get("models", [])
+            for m in models:
+                if isinstance(m, dict):
+                    name = m.get("name")
+                else: 
+                     name = m 
+                if name:
+                    model_counts[name] = model_counts.get(name, 0) + 1
+        return [{"name": k, "providers": v} for k, v in model_counts.items()]
+
     async def _keep_alive(self):
         """Send periodic pings and RE-VALIDATE token to handle revocation."""
         try:
@@ -58,6 +125,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
         )
         if self.node_id != "unknown":
             await self._mark_node_inactive(self.node_id)
+            await self._broadcast_dashboard_update()
 
     async def receive(self, text_data):
         data = json.loads(text_data)
@@ -88,6 +156,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
                 "status": "ok",
                 "owner": username
             }, ensure_ascii=False))
+            await self._broadcast_dashboard_update()
 
         elif msg_type == "job_result":
             result = data.get("result", {})
@@ -101,11 +170,93 @@ class GPUConsumer(AsyncWebsocketConsumer):
             if task_id:
                 if status == "success":
                     await self._complete_job(task_id, {"output": response_text}, self.provider_user_id)
+                    await self._broadcast_dashboard_update()
+                    # Notify involved users (Owner & Provider)
+                    await self._notify_job_completion(task_id, self.provider_user_id)
                 else:
                     await self._fail_job(task_id, {"error": error})
+                    await self._notify_job_completion(task_id, self.provider_user_id)
 
         elif msg_type == "pong":
             pass
+
+    async def _notify_job_completion(self, job_id, provider_id):
+        """Send private updates to Job Owner and Provider."""
+        # Async wrapper to gather data and send group messages
+        data = await self._get_job_completion_data(job_id, provider_id)
+        if not data: return
+
+        owner_id = data['owner_id']
+        job_data = data['job_data']
+        owner_balance = data['owner_balance']
+        provider_balance = data['provider_balance']
+
+        # 1. Notify Job Owner (Job status + Balance update)
+        if owner_id:
+            await self.channel_layer.group_send(
+                f"user_{owner_id}",
+                {
+                    "type": "dashboard_update",
+                    "data": {
+                        "type": "job_update", # Single job update
+                        "job": job_data
+                    }
+                }
+            )
+            await self.channel_layer.group_send(
+                f"user_{owner_id}",
+                {
+                    "type": "dashboard_update",
+                    "data": {
+                        "type": "balance_update",
+                        "balance": str(owner_balance)
+                    }
+                }
+            )
+
+        # 2. Notify Provider (Balance update)
+        if provider_id:
+            await self.channel_layer.group_send(
+                f"user_{provider_id}",
+                {
+                    "type": "dashboard_update",
+                    "data": {
+                        "type": "balance_update",
+                        "balance": str(provider_balance)
+                    }
+                }
+            )
+
+    @database_sync_to_async
+    def _get_job_completion_data(self, job_id, provider_id):
+        from .models import Job
+        from core.models import User
+        try:
+            job = Job.objects.get(id=job_id)
+            owner = job.user
+            
+            provider_balance = Decimal("0.00")
+            if provider_id:
+                try:
+                    provider_balance = User.objects.get(id=provider_id).wallet_balance
+                except: pass
+
+            return {
+                "owner_id": owner.id,
+                "owner_balance": owner.wallet_balance,
+                "provider_balance": provider_balance,
+                "job_data": {
+                    "id": job.id, "status": job.status, 
+                    "prompt": job.input_data.get('prompt', ''),
+                    "model": job.input_data.get('model', ''), 
+                    "cost": str(job.cost) if job.cost else None,
+                    "result": job.result, 
+                    "created_at": str(job.created_at),
+                    "completed_at": str(job.completed_at) if job.completed_at else None
+                }
+            }
+        except Job.DoesNotExist:
+            return None
 
     async def job_dispatch(self, event):
         """Handler for sending a job to this consumer."""
@@ -207,3 +358,147 @@ class GPUConsumer(AsyncWebsocketConsumer):
             logger.error(f"Job {task_id} failed: {error_data}")
         except Job.DoesNotExist:
             logger.error(f"Job {task_id} not found")
+
+class DashboardConsumer(AsyncWebsocketConsumer):
+    async def connect(self):
+        self.user_id = None
+        self.group_name = "dashboard_updates"
+        
+        # 1. Join public group
+        await self.channel_layer.group_add(
+            self.group_name,
+            self.channel_name
+        )
+        
+        # 2. Authenticate User (via query param ?token=...)
+        query_string = self.scope.get("query_string", b"").decode("utf-8")
+        params = dict(qs.split("=") for qs in query_string.split("&") if "=" in qs)
+        token = params.get("token")
+        
+        if token:
+            user = await self._get_user_from_token(token)
+            if user:
+                self.user_id = user.id
+                self.user_group = f"user_{user.id}"
+                await self.channel_layer.group_add(
+                    self.user_group,
+                    self.channel_name
+                )
+                logger.info(f"Dashboard WS: User {user.username} connected")
+
+        await self.accept()
+        
+        # 3. Send Initial Public Snapshot
+        stats = await self._get_stats()
+        models = await self._get_models()
+        await self.send(json.dumps({
+            "type": "stats_update",
+            "stats": stats
+        }))
+        await self.send(json.dumps({
+            "type": "models_update",
+            "models": models
+        }))
+
+        # 4. Send Initial User Snapshot (if auth)
+        if self.user_id:
+            balance = await self._get_balance(self.user_id)
+            await self.send(json.dumps({
+                "type": "balance_update",
+                "balance": str(balance)
+            }))
+            # Job history could be served here or fetched via REST initially.
+            # Usually REST for initial list is fine, and WS for updates.
+            # But let's send recent jobs for "streaming" feeel.
+            jobs = await self._get_recent_jobs(self.user_id)
+            await self.send(json.dumps({
+                "type": "jobs_update",
+                "jobs": jobs
+            }, default=str)) # default=str for datetime
+
+    async def disconnect(self, close_code):
+        await self.channel_layer.group_discard(
+            self.group_name,
+            self.channel_name
+        )
+        if self.user_id:
+            await self.channel_layer.group_discard(
+                self.user_group,
+                self.channel_name
+            )
+
+    async def dashboard_update(self, event):
+        """Handle broadcast messages (public or private)."""
+        await self.send(json.dumps(event["data"], default=str))
+
+    @database_sync_to_async
+    def _get_user_from_token(self, token):
+        from rest_framework_simplejwt.tokens import AccessToken
+        from core.models import User
+        try:
+            access_token = AccessToken(token)
+            user_id = access_token.payload.get("user_id")
+            return User.objects.get(id=user_id)
+        except Exception:
+            return None
+
+    @database_sync_to_async
+    def _get_balance(self, user_id):
+        from core.models import User
+        try:
+            return User.objects.get(id=user_id).wallet_balance
+        except:
+            return Decimal("0.00")
+
+    @database_sync_to_async
+    def _get_recent_jobs(self, user_id):
+        from .models import Job
+        # Return last 10 jobs
+        jobs = Job.objects.filter(user_id=user_id).order_by('-created_at')[:10]
+        result = []
+        for job in jobs:
+            result.append({
+                "id": job.id,
+                "status": job.status,
+                "prompt": job.input_data.get("prompt", ""),
+                "model": job.input_data.get("model", ""),
+                "cost": str(job.cost) if job.cost else None,
+                "result": job.result,
+                "created_at": str(job.created_at),
+                "completed_at": str(job.completed_at) if job.completed_at else None
+            })
+        return result
+
+    @database_sync_to_async
+    def _get_stats(self):
+        from .models import Node, Job
+        active_nodes = Node.objects.filter(is_active=True).count()
+        completed_jobs = Job.objects.filter(status="COMPLETED").count()
+        models = self._get_models_sync()
+        return {
+            "active_nodes": active_nodes,
+            "completed_jobs": completed_jobs,
+            "available_models": len(models)
+        }
+
+    @database_sync_to_async
+    def _get_models(self):
+        return self._get_models_sync()
+
+    def _get_models_sync(self):
+        from .models import Node
+        nodes = Node.objects.filter(is_active=True)
+        model_counts = {}
+        for node in nodes:
+            info = node.gpu_info or {}
+            models = info.get("models", [])
+            for m in models:
+                if isinstance(m, dict):
+                    name = m.get("name")
+                else: 
+                     name = m # Handle string list if legacy
+                
+                if name:
+                    model_counts[name] = model_counts.get(name, 0) + 1
+        
+        return [{"name": k, "providers": v} for k, v in model_counts.items()]
