@@ -272,7 +272,11 @@ SOCIALACCOUNT_ADAPTER = 'core.adapters.MySocialAccountAdapter'
 
 # Frontend URL for OAuth redirects
 FRONTEND_URL = os.environ.get("FRONTEND_URL", "http://localhost:5173")
-LOGIN_REDIRECT_URL = FRONTEND_URL + "/oauth/callback"
+
+# After OAuth completes, allauth redirects HERE (backend view).
+# The backend view generates JWT tokens and redirects to the React frontend.
+# This avoids cross-site cookie issues (Chrome blocks them).
+LOGIN_REDIRECT_URL = "/api/auth/oauth/callback/complete/"
 ACCOUNT_LOGOUT_REDIRECT_URL = FRONTEND_URL
 
 SOCIALACCOUNT_PROVIDERS = {

@@ -1,18 +1,16 @@
 import React, { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuth } from '../context/AuthContext';
-import axios from 'axios';
-
-const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:8000';
 
 /**
  * OAuth Callback Page
  * 
  * Flow:
  * 1. User completes OAuth with Google/GitHub/Microsoft
- * 2. allauth redirects here (LOGIN_REDIRECT_URL = /oauth/callback)
- * 3. This page calls the backend to exchange the Django session for JWT tokens
- * 4. Stores JWT and redirects to the Dashboard
+ * 2. allauth redirects to backend /api/auth/oauth/callback/complete/
+ * 3. Backend generates JWT tokens and redirects here with tokens in URL hash
+ * 4. This page reads tokens from the hash fragment and stores them
+ * 5. No cross-site cookies needed — works in all browsers
  */
 export const OAuthCallback: React.FC = () => {
   const [status, setStatus] = useState('Completing sign in...');
@@ -20,17 +18,29 @@ export const OAuthCallback: React.FC = () => {
   const { login } = useAuth();
 
   useEffect(() => {
-    const exchangeSessionForJWT = async () => {
+    const processOAuthTokens = () => {
       try {
-        // The allauth redirect sets a Django session cookie.
-        // We call the backend with credentials to exchange it for JWT.
-        const resp = await axios.get(`${API_URL}/api/auth/oauth/callback/`, {
-          withCredentials: true  // Send session cookie
-        });
+        // Read tokens from URL hash fragment
+        // URL looks like: /oauth/callback#access=xxx&refresh=xxx&user=xxx
+        const hash = window.location.hash.substring(1); // Remove the '#'
+        
+        if (!hash) {
+          setStatus('Authentication failed. No credentials received.');
+          setTimeout(() => navigate('/login'), 2000);
+          return;
+        }
 
-        if (resp.data.access) {
-          login(resp.data.access);
+        const params = new URLSearchParams(hash);
+        const accessToken = params.get('access');
+        const userDataStr = params.get('user');
+
+        if (accessToken) {
+          login(accessToken);
           setStatus('Success! Redirecting...');
+          
+          // Clean the URL hash so tokens aren't visible in browser history
+          window.history.replaceState(null, '', '/oauth/callback');
+          
           setTimeout(() => navigate('/dashboard'), 500);
         } else {
           setStatus('Authentication failed. Please try again.');
@@ -43,7 +53,7 @@ export const OAuthCallback: React.FC = () => {
       }
     };
 
-    exchangeSessionForJWT();
+    processOAuthTokens();
   }, []);
 
   return (
