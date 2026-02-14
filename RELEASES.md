@@ -1,5 +1,27 @@
 # GPU Connect Releases
 
+## [v1.0.2](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.2) — CI, coverage, and deployment fixes
+
+**Release Date**: February 15, 2026
+
+### 🔧 Improvements & Fixes
+
+- Increased test coverage from ~75% to 95% by adding and improving tests across `computing`, `core`, and `payments` (195 tests total).
+- Fixed Pylint false positives by adding `pylint-django` and cleaning up lint issues.
+- Stabilized serializers and tests (read-only field handling, async test fixes) and added `pytest-asyncio` support.
+- Hardened the deployment workflow:
+	- Validates required secrets before attempting deploys.
+	- Added `workflow_dispatch` for manual deploy runs.
+	- Standardized Render secret name to `RENDER_DEPLOY_HOOK` and added `DEPLOYMENT.md` with setup instructions.
+	- Improved Vercel integration (`VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`) and clearer error messages.
+
+### Action Items
+
+- Add repository secrets: `VERCEL_TOKEN`, `VERCEL_ORG_ID`, `VERCEL_PROJECT_ID`, `RENDER_DEPLOY_HOOK` (see `DEPLOYMENT.md`).
+- Optionally review GitHub Environment protections for `production-frontend` / `production-backend`.
+
+---
+
 ## [v1.0.1](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.1) — OAuth Fix for Chrome & Incognito
 
 **Release Date**: February 15, 2026
