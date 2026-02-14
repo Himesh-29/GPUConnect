@@ -192,11 +192,14 @@ const IntegrateSection = () => (
               </p>
               <div style={{ display: 'flex', gap: '12px', flexWrap: 'wrap' }}>
                 <a href="/downloads/gpu-connect.exe" download className="btn-primary btn-sm">
-                  Download for Windows (.exe)
+                  ⊞ Windows (.exe)
                 </a>
-                <button className="btn-secondary btn-sm" disabled>
-                  macOS / Linux (Coming Soon)
-                </button>
+                <a href="/downloads/gpu-connect-agent-linux.zip" download className="btn-primary btn-sm">
+                  🐧 Linux (.zip)
+                </a>
+                <a href="/downloads/gpu-connect-agent-macos.zip" download className="btn-primary btn-sm">
+                   macOS (.zip)
+                </a>
               </div>
             </div>
           </div>
