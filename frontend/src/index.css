@@ -93,7 +93,7 @@ button {
 /* Buttons */
 .btn-primary {
   background: var(--accent-gradient);
-  color: #000000;
+  color: #000000 !important;
   padding: 12px 24px;
   border-radius: var(--radius-sm);
   font-weight: 600;
@@ -106,7 +106,7 @@ button {
   transform: translateY(-2px);
   box-shadow: 0 8px 30px rgba(212, 160, 55, 0.35);
   filter: brightness(1.1);
-  color: #000000;
+  color: #000000 !important;
 }
 .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
 
