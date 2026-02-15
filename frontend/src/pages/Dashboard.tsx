@@ -599,7 +599,7 @@ const ProviderDashboard = ({ token }: { token: string | null }) => {
                   fontSize: '14px', fontWeight: 700,
                   color: tx.type === 'earning' ? 'var(--success)' : 'var(--error)'
                 }}>
-                  {tx.type === 'earning' ? '+' : ''}{tx.amount > 0 ? `+$${tx.amount.toFixed(2)}` : `-$${Math.abs(tx.amount).toFixed(2)}`}
+                  {tx.type === 'earning' ? '+' : ''}{tx.amount > 0 ? `$${tx.amount.toFixed(2)}` : `-$${Math.abs(tx.amount).toFixed(2)}`}
                 </div>
               </div>
             ))}
