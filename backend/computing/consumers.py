@@ -234,7 +234,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
         job_data = data['job_data']
         owner_balance = data['owner_balance']
 
-        # 1. Notify Job Owner (Job status + Balance update)
+        # 1. Notify Job Owner (Job status + Balance update + Transaction history refresh)
         if owner_id:
             await self.channel_layer.group_send(
                 f"user_{owner_id}",
@@ -256,8 +256,18 @@ class GPUConsumer(AsyncWebsocketConsumer):
                     }
                 }
             )
+            # Refresh provider stats (which includes transaction history) for consumer
+            await self.channel_layer.group_send(
+                f"user_{owner_id}",
+                {
+                    "type": "dashboard_update",
+                    "data": {
+                        "type": "refresh_provider_stats"
+                    }
+                }
+            )
 
-        # 2. Notify Provider (Balance update)
+        # 2. Notify Provider (Balance update + Transaction history refresh)
         if provider_id:
             await self.channel_layer.group_send(
                 f"user_{provider_id}",
