@@ -16,7 +16,7 @@ JOB_COST = Decimal("1.00")
 PROVIDER_SHARE = Decimal("1.00")
 
 # Nodes with no heartbeat for this long are auto-marked inactive
-NODE_STALE_THRESHOLD = timedelta(minutes=2)
+NODE_STALE_THRESHOLD = timedelta(seconds=45)
 
 
 def _cleanup_stale_nodes():
