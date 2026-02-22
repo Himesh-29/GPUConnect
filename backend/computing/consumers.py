@@ -2,13 +2,12 @@
 import asyncio
 import json
 import logging
+from datetime import timedelta
 from decimal import Decimal
 
 from channels.db import database_sync_to_async
 from channels.generic.websocket import AsyncWebsocketConsumer
 from django.utils import timezone
-
-from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -542,7 +541,7 @@ class DashboardConsumer(AsyncWebsocketConsumer):
                 "stats": provider_stats
             }))
 
-    async def disconnect(self, close_code):
+    async def disconnect(self, close_code):  # pylint: disable=unused-argument
         """Leave groups on WebSocket disconnect."""
         await self.channel_layer.group_discard(
             self.group_name,

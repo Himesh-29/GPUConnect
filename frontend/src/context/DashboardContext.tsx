@@ -140,6 +140,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
       if (ws.current) ws.current.close();
       if (reconnectTimeout.current) clearTimeout(reconnectTimeout.current);
     };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [token]); // Reconnect if token changes (login/logout)
 
   // Sync initial balance from Auth if available
@@ -147,6 +148,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     if (user && balance === null) {
       setBalance(Number(user.wallet_balance));
     }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user]);
 
   return (

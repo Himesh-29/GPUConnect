@@ -1,9 +1,7 @@
 """Tests for OAuth views (OAuthCompleteView, OAuthCallbackView)."""
-from unittest.mock import patch
 
 from django.contrib.auth import get_user_model
 from django.test import TestCase, RequestFactory, override_settings
-from rest_framework.test import force_authenticate
 
 from core.oauth_views import OAuthCompleteView, OAuthCallbackView
 

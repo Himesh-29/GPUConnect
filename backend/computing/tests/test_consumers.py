@@ -1,5 +1,6 @@
 """Tests for WebSocket consumers (GPUConsumer and DashboardConsumer)."""
-import json
+# pylint: disable=protected-access, unused-import
+
 from decimal import Decimal
 
 import pytest

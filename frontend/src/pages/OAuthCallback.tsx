@@ -58,6 +58,7 @@ export const OAuthCallback: React.FC = () => {
     };
 
     processOAuthTokens();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   return (

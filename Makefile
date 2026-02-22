@@ -32,6 +32,43 @@ dev:
 	start cmd /k "cd frontend && npm run dev"
 	@echo "🚀 Dev servers started"
 
-# ─── Tests ───────────────────────────────────────────────
-test:
+# ─── Tests & Coverage ────────────────────────────────────
+test: test-backend test-frontend
+
+test-backend:
+	@echo "Running backend tests..."
 	cd backend && uv run pytest -v
+
+test-frontend:
+	@echo "Running frontend tests..."
+	cd frontend && npm run test
+
+test-cov: test-backend-cov test-frontend-cov
+
+test-backend-cov:
+	@echo "Running backend tests with coverage..."
+	cd backend && uv run pytest --cov=. --cov-report=term-missing --cov-report=html
+
+test-frontend-cov:
+	@echo "Running frontend tests with coverage..."
+	cd frontend && npm run test:coverage
+
+# ─── Linting ─────────────────────────────────────────────
+lint: lint-backend lint-frontend
+
+lint-backend:
+	@echo "Linting backend..."
+	cd backend && uv run pylint computing core payments config
+
+lint-frontend:
+	@echo "Linting frontend..."
+	cd frontend && npm run lint
+
+# ─── Database & Migrations ───────────────────────────────
+migrate:
+	@echo "Applying database migrations..."
+	cd backend && uv run python manage.py migrate
+
+makemigrations:
+	@echo "Creating database migrations..."
+	cd backend && uv run python manage.py makemigrations
