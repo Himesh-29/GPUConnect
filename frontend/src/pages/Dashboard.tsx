@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboard } from '../context/DashboardContext';
-import { LayoutDashboard, Wallet, Server, Activity, RefreshCw, TrendingUp, Cpu, ArrowUpRight, ArrowDownRight, Filter, MessageSquare, Send, Zap, Loader2, User } from 'lucide-react';
+import { LayoutDashboard, Wallet, Server, Activity, RefreshCw, TrendingUp, Cpu, ArrowUpRight, ArrowDownRight, Filter, MessageSquare, Plus, Send, Zap, Loader2, User } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import axios from 'axios';
 import './Dashboard.css';
@@ -623,6 +623,49 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
   const [submitting, setSubmitting] = useState(false);
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
 
+  // Local Chat Sessions State
+  // Since the backend doesn't yet support session grouping, we simulate it locally.
+  const [sessions, setSessions] = useState<{ id: string; name: string; jobs: any[] }[]>([
+    { id: 'default', name: 'New Chat', jobs: [] }
+  ]);
+  const [activeSessionId, setActiveSessionId] = useState<string>('default');
+
+  // Distribute incoming recentJobs into the active session if they aren't already mapped
+  useEffect(() => {
+    if (recentJobs.length === 0) return;
+    
+    setSessions(prev => {
+      const next = [...prev];
+      const allMappedJobIds = new Set(next.flatMap(s => s.jobs.map(j => j.id)));
+      
+      const newJobs = recentJobs.filter(j => !allMappedJobIds.has(j.id));
+      if (newJobs.length > 0) {
+        // Find the active session to inject them into
+        let activeSession = next.find(s => s.id === activeSessionId);
+        if (!activeSession) {
+          activeSession = next[0]; // fallback
+        }
+        activeSession.jobs = [...activeSession.jobs, ...newJobs];
+
+        // Auto-name the session based on the first prompt if it's currently "New Chat"
+        if (activeSession.name === 'New Chat' && activeSession.jobs.length > 0) {
+           activeSession.name = activeSession.jobs[0].prompt.slice(0, 30) + (activeSession.jobs[0].prompt.length > 30 ? '...' : '');
+        }
+      }
+
+      // We also need to update status of existing jobs (e.g., RUNNING -> COMPLETED)
+      next.forEach(session => {
+        session.jobs = session.jobs.map(localJob => {
+          const updatedFromServer = recentJobs.find(rj => rj.id === localJob.id);
+          return updatedFromServer ? updatedFromServer : localJob;
+        });
+      });
+
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentJobs]); // Only re-run when recentJobs changes from context
+
   // Auto-select first model if none selected
   useEffect(() => {
     if (!selectedModel && models.length > 0) {
@@ -649,12 +692,14 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
     setSubmitting(false);
   };
 
-  // Group jobs by session. Since we don't have real chat sessions yet, 
-  // we'll just show the recent jobs as a single continuous thread.
-  // Sort ascending by ID (oldest first) so they stack like a chat.
-  const chatJobs = [...recentJobs].sort((a, b) => a.id - b.id);
+  const handleNewChat = () => {
+    const newId = Date.now().toString();
+    setSessions([{ id: newId, name: 'New Chat', jobs: [] }, ...sessions]);
+    setActiveSessionId(newId);
+  };
 
-  // Auto scroll to bottom effect could go here
+  const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
+  const chatJobs = [...(activeSession?.jobs || [])].sort((a, b) => a.id - b.id);
   
   return (
     <div className="playground-container" style={{
@@ -663,6 +708,51 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
       border: '1px solid var(--border)', overflow: 'hidden'
     }}>
       
+      {/* Playground Sidebar (Sessions) */}
+      <div style={{
+        width: '260px', background: 'rgba(0,0,0,0.2)', borderRight: '1px solid var(--border)',
+        display: 'flex', flexDirection: 'column'
+      }}>
+        <div style={{ padding: '16px' }}>
+          <button
+            onClick={handleNewChat}
+            style={{
+              width: '100%', display: 'flex', alignItems: 'center', gap: '8px',
+              padding: '10px 16px', background: 'var(--accent)', color: 'var(--bg-primary)',
+              border: 'none', borderRadius: '8px', fontWeight: 600, cursor: 'pointer',
+              transition: 'opacity 0.2s'
+            }}
+          >
+            <Plus size={18} /> New Chat
+          </button>
+        </div>
+        
+        <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: '8px' }}>
+          <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', marginBottom: '8px', marginTop: '8px' }}>
+            Recent Sessions
+          </div>
+          {sessions.map(session => (
+            <button
+              key={session.id}
+              onClick={() => setActiveSessionId(session.id)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: '10px',
+                padding: '10px', borderRadius: '8px', width: '100%', textAlign: 'left',
+                background: activeSessionId === session.id ? 'var(--accent-dim)' : 'transparent',
+                border: activeSessionId === session.id ? '1px solid rgba(212,160,55,0.3)' : '1px solid transparent',
+                color: activeSessionId === session.id ? 'var(--accent)' : 'var(--text-primary)',
+                cursor: 'pointer', transition: 'all 0.2s', overflow: 'hidden'
+              }}
+            >
+              <MessageSquare size={16} style={{ flexShrink: 0, color: activeSessionId === session.id ? 'var(--accent)' : 'var(--text-muted)' }} />
+              <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '13px' }}>
+                {session.name}
+              </div>
+            </button>
+          ))}
+        </div>
+      </div>
+
       {/* Main Chat Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         
@@ -701,9 +791,9 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
           {chatJobs.length === 0 ? (
             <div className="empty-state" style={{ height: '100%' }}>
               <Zap size={48} style={{ color: 'var(--accent)', opacity: 0.3, marginBottom: '16px' }} />
-              <h3 style={{ color: 'var(--text-primary)', marginBottom: '8px' }}>GPU Connect Playground</h3>
+              <h3 style={{ color: 'var(--text-primary)', marginBottom: '8px' }}>Send a message</h3>
               <p style={{ maxWidth: '400px', textAlign: 'center', lineHeight: '1.6' }}>
-                Select a model from the dropdown above and send a message to start prompting the decentralized network.
+                Select a model from the dropdown above and start a new conversation with the decentralized GPU network.
               </p>
             </div>
           ) : (
