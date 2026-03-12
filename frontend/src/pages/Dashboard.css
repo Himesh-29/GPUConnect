@@ -223,3 +223,13 @@
   .dashboard-content { margin-left: 0; padding: 88px 16px 16px; }
   .dashboard-grid { grid-template-columns: 1fr; }
 }
+
+/* ===== DROPDOWN UI ===== */
+.dropdown-item {
+  transition: background 0.2s ease, color 0.2s ease;
+}
+
+.dropdown-item:hover {
+  background: rgba(255, 255, 255, 0.08) !important;
+  color: var(--accent) !important;
+}

@@ -3,6 +3,7 @@ from django.urls import path
 from .views import (
     JobSubmissionView, JobDetailView, JobListView,
     AvailableModelsView, NetworkStatsView, ProviderStatsView,
+    SessionListView, SessionDetailView
 )
 
 urlpatterns = [
@@ -12,4 +13,6 @@ urlpatterns = [
     path('models/', AvailableModelsView.as_view(), name='available-models'),
     path('stats/', NetworkStatsView.as_view(), name='network-stats'),
     path('provider-stats/', ProviderStatsView.as_view(), name='provider-stats'),
+    path('sessions/', SessionListView.as_view(), name='session-list'),
+    path('sessions/<str:session_id>/', SessionDetailView.as_view(), name='session-detail'),
 ]

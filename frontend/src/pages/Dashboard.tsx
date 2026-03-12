@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboard } from '../context/DashboardContext';
-import { LayoutDashboard, Wallet, Server, Activity, RefreshCw, TrendingUp, Cpu, ArrowUpRight, ArrowDownRight, Filter, MessageSquare, Plus, Send, Zap, Loader2, User, ChevronUp } from 'lucide-react';
+import { LayoutDashboard, Wallet, Server, RefreshCw, TrendingUp, Cpu, ArrowUpRight, ArrowDownRight, Filter, MessageSquare, Plus, Send, Zap, Loader2, User, ChevronUp, Pencil, Check } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import axios from 'axios';
 import './Dashboard.css';
@@ -45,89 +45,88 @@ const WalletCard = ({ balance, onRefresh }: { balance: number, onRefresh: () => 
   </div>
 );
 
-/* ===== Job History ===== */
-const JobHistory = () => {
-  const { recentJobs } = useDashboard();
-  const [statusFilter, setStatusFilter] = useState<string>('ALL');
+/* ===== Recent Chats (Overview) ===== */
+const RecentChats = ({ onSelectChat }: { onSelectChat: (id: string) => void }) => {
+  const { sessions } = useDashboard();
 
-  // Using streaming jobs from context
-  const jobs = recentJobs;
-
-  const statusStyle = (s: string) => {
-    const colors: Record<string, string> = {
-      COMPLETED: 'var(--success)', FAILED: 'var(--error)',
-      RUNNING: 'var(--warning)', PENDING: 'var(--text-muted)'
-    };
-    return colors[s] || 'var(--text-muted)';
-  };
-
-  const filtered = statusFilter === 'ALL' ? jobs : jobs.filter(j => j.status === statusFilter);
+  // Show only sessions that have jobs
+  const activeSessions = sessions.filter(s => s.jobs.length > 0).sort((a, b) => {
+    const tA = a.jobs.length ? new Date(a.jobs[a.jobs.length-1].created_at).getTime() : 0;
+    const tB = b.jobs.length ? new Date(b.jobs[b.jobs.length-1].created_at).getTime() : 0;
+    return tB - tA;
+  });
 
   return (
     <div className="glass-card">
       <div className="card-header">
-        <h3>Job History</h3>
-        <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
-          <select
-            value={statusFilter}
-            onChange={e => setStatusFilter(e.target.value)}
-            style={{
-              background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
-              color: 'var(--text-primary)', borderRadius: '6px', padding: '4px 8px', fontSize: '11px'
-            }}
-          >
-            <option value="ALL">All</option>
-            <option value="COMPLETED">Completed</option>
-            <option value="RUNNING">Running</option>
-            <option value="PENDING">Pending</option>
-            <option value="FAILED">Failed</option>
-          </select>
-        </div>
+        <h3>Recent Chats</h3>
       </div>
-      {jobs.length === 0 ? (
+      {activeSessions.length === 0 ? (
           <div className="empty-state">
-            <Activity size={40} className="opacity-50" style={{ color: 'var(--accent)' }} />
-            <p>No jobs {statusFilter !== 'ALL' ? `with status ${statusFilter}` : 'submitted yet'}</p>
+            <MessageSquare size={40} className="opacity-50" style={{ color: 'var(--accent)' }} />
+            <p>No active chat sessions yet.</p>
           </div>
         ) : (
-          <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', maxHeight: '400px', overflowY: 'auto' }}>
-            {filtered.map(j => (
-              <div key={j.id} style={{
-                padding: '12px', borderRadius: '8px',
-                background: 'rgba(255,255,255,0.02)', border: '1px solid var(--border)'
-              }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '6px' }}>
-                  <span style={{ fontSize: '12px', color: 'var(--text-muted)' }}>
-                    #{j.id} · {j.model}
-                  </span>
-                  <span style={{
-                    fontSize: '11px', fontWeight: 700,
-                    color: statusStyle(j.status),
-                    padding: '2px 8px', borderRadius: '4px',
-                    background: `${statusStyle(j.status)}15`,
-                    letterSpacing: '0.5px'
-                  }}>
-                    {j.status}
-                  </span>
-                </div>
-                <p style={{ fontSize: '13px', color: 'var(--text-primary)', margin: '4px 0' }}>{j.prompt}</p>
-                {j.result?.output && (
-                  <div style={{
-                    fontSize: '12px', color: 'var(--text-secondary)',
-                    background: 'rgba(0,0,0,0.2)', padding: '8px',
-                    borderRadius: '6px', marginTop: '6px',
-                    maxHeight: '80px', overflowY: 'auto', whiteSpace: 'pre-wrap'
-                  }}>
-                    {j.result.output}
+          <div style={{ display: 'flex', flexDirection: 'column', gap: '12px', maxHeight: '500px', overflowY: 'auto', paddingRight: '8px' }}>
+            {activeSessions.map(session => {
+              const successful = session.jobs.filter(j => j.status === 'COMPLETED').length;
+              const uniqueModels = Array.from(new Set(session.jobs.map(j => j.model))).filter(Boolean) as string[];
+              const totalCost = session.jobs.reduce((sum, j) => sum + (parseFloat(j.cost || '0') || 0), 0);
+
+              return (
+              <div 
+                key={session.id} 
+                className="sidebar-item"
+                style={{
+                  padding: '16px', borderRadius: '12px', cursor: 'pointer',
+                  background: 'var(--bg-secondary)', border: '1px solid var(--border)',
+                  borderLeft: '4px solid var(--accent)',
+                  boxShadow: '0 4px 12px rgba(0,0,0,0.1)',
+                  display: 'flex', flexDirection: 'column', gap: '12px', alignItems: 'stretch',
+                  transition: 'transform 0.2s, box-shadow 0.2s, background 0.2s',
+                }}
+                onClick={() => onSelectChat(session.id)}
+                onMouseEnter={(e) => {
+                  e.currentTarget.style.transform = 'translateY(-2px)';
+                  e.currentTarget.style.boxShadow = '0 6px 16px rgba(0,0,0,0.2)';
+                  e.currentTarget.style.background = 'rgba(255,255,255,0.03)';
+                }}
+                onMouseLeave={(e) => {
+                  e.currentTarget.style.transform = 'none';
+                  e.currentTarget.style.boxShadow = '0 4px 12px rgba(0,0,0,0.1)';
+                  e.currentTarget.style.background = 'var(--bg-secondary)';
+                }}
+              >
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <div>
+                    <span style={{ fontSize: '15px', fontWeight: 600, color: 'var(--text-primary)' }}>
+                      {session.name}
+                    </span>
+                    <div style={{ fontSize: '12px', color: 'var(--text-muted)', marginTop: '6px', display: 'flex', gap: '12px', alignItems: 'center' }}>
+                      <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                        <MessageSquare size={12} /> {session.jobs.length} Msgs
+                      </span>
+                      {successful > 0 && <span style={{color: 'var(--success)'}}>({successful} successful)</span>}
+                      {uniqueModels.length > 0 && (
+                        <span style={{ display: 'flex', alignItems: 'center', gap: '4px' }}>
+                          <Cpu size={12} /> {uniqueModels.join(', ')}
+                        </span>
+                      )}
+                    </div>
                   </div>
-                )}
-                {j.result?.error && (
-                  <p style={{ fontSize: '12px', color: 'var(--error)', marginTop: '4px' }}>
-                    {j.result.error}
+                  {totalCost > 0 && (
+                    <div style={{ fontSize: '13px', fontWeight: 600, color: 'var(--accent)', background: 'rgba(212,160,55,0.1)', padding: '4px 8px', borderRadius: '6px' }}>
+                      ${totalCost.toFixed(2)}
+                    </div>
+                  )}
+                </div>
+                {session.jobs.length > 0 && (
+                  <p style={{ fontSize: '13px', color: 'var(--text-muted)', margin: 0, whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', background: 'rgba(0,0,0,0.2)', padding: '8px 12px', borderRadius: '6px' }}>
+                    {session.jobs[session.jobs.length - 1]?.prompt}
                   </p>
                 )}
               </div>
-            ))}
+            )})}
           </div>
         )}
     </div>
@@ -393,6 +392,7 @@ const ProviderDashboard = ({ token }: { token: string | null }) => {
   const { providerStats, setProviderDays } = useDashboard();
   const [days, setDays] = useState(30);
   const [txFilter, setTxFilter] = useState<string>('all');
+  const [isTxDropdownOpen, setIsTxDropdownOpen] = useState(false);
 
   const onDaysChange = (d: number) => {
     setDays(d);
@@ -555,18 +555,65 @@ const ProviderDashboard = ({ token }: { token: string | null }) => {
           <h3>Transaction History</h3>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <Filter size={14} style={{ color: 'var(--text-muted)' }} />
-            <select
-              value={txFilter}
-              onChange={e => setTxFilter(e.target.value)}
-              style={{
-                background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
-                color: 'var(--text-primary)', borderRadius: '6px', padding: '4px 8px', fontSize: '11px'
-              }}
+            <div 
+              style={{ position: 'relative', paddingBottom: '16px', marginBottom: '-16px' }}
+              onMouseEnter={() => setIsTxDropdownOpen(true)}
+              onMouseLeave={() => setIsTxDropdownOpen(false)}
             >
-              <option value="all">All Transactions</option>
-              <option value="earning">Earnings Only</option>
-              <option value="spending">Spending Only</option>
-            </select>
+              <button
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '8px',
+                  background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+                  color: 'var(--text-primary)', borderRadius: '6px', padding: '6px 12px', fontSize: '11px',
+                  cursor: 'pointer', transition: 'all 0.2s'
+                }}
+              >
+                {txFilter === 'all' ? 'All Transactions' : txFilter === 'earning' ? 'Earnings Only' : 'Spending Only'}
+                <ChevronUp 
+                  size={14} 
+                  style={{ 
+                    color: 'var(--text-muted)', 
+                    transform: isTxDropdownOpen ? 'rotate(180deg)' : 'rotate(0deg)',
+                    transition: 'transform 0.2s'
+                  }} 
+                />
+              </button>
+              
+              <div style={{
+                position: 'absolute', top: 'calc(100% - 10px)', right: 0,
+                background: 'var(--bg-card)', border: '1px solid var(--border)',
+                borderRadius: '8px', padding: '6px', minWidth: '150px',
+                boxShadow: '0 10px 30px rgba(0,0,0,0.5)', zIndex: 50,
+                opacity: isTxDropdownOpen ? 1 : 0,
+                transform: isTxDropdownOpen ? 'translateY(0)' : 'translateY(-10px)',
+                pointerEvents: isTxDropdownOpen ? 'auto' : 'none',
+                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+              }}>
+                {[
+                  { value: 'all', label: 'All Transactions' },
+                  { value: 'earning', label: 'Earnings Only' },
+                  { value: 'spending', label: 'Spending Only' }
+                ].map(opt => (
+                  <button
+                    key={opt.value}
+                    onClick={() => {
+                      setTxFilter(opt.value);
+                      setIsTxDropdownOpen(false);
+                    }}
+                    className="dropdown-item"
+                    style={{
+                      width: '100%', textAlign: 'left', padding: '8px 12px',
+                      background: 'transparent', border: 'none', borderRadius: '4px',
+                      color: txFilter === opt.value ? 'var(--accent)' : 'var(--text-secondary)',
+                      fontSize: '11px', cursor: 'pointer',
+                      display: 'flex', alignItems: 'center', gap: '8px'
+                    }}
+                  >
+                    {opt.label}
+                  </button>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
         {filteredTx.length > 0 ? (
@@ -617,55 +664,16 @@ const ProviderDashboard = ({ token }: { token: string | null }) => {
 
 /* ===== PLAYGROUND / CHAT DASHBOARD ===== */
 const PlaygroundDashboard = ({ token }: { token: string | null }) => {
-  const { models, recentJobs, loading: loadingModels } = useDashboard();
+  const { models, loading: loadingModels, sessions, setSessions, activeSessionId, setActiveSessionId, balance } = useDashboard();
   const [prompt, setPrompt] = useState('');
   const [selectedModel, setSelectedModel] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
 
-  // Local Chat Sessions State
-  // Since the backend doesn't yet support session grouping, we simulate it locally.
-  const [sessions, setSessions] = useState<{ id: string; name: string; jobs: any[] }[]>([
-    { id: 'default', name: 'New Chat', jobs: [] }
-  ]);
-  const [activeSessionId, setActiveSessionId] = useState<string>('default');
-
-  // Distribute incoming recentJobs into the active session if they aren't already mapped
-  useEffect(() => {
-    if (recentJobs.length === 0) return;
-    
-    setSessions(prev => {
-      const next = [...prev];
-      const allMappedJobIds = new Set(next.flatMap(s => s.jobs.map(j => j.id)));
-      
-      const newJobs = recentJobs.filter(j => !allMappedJobIds.has(j.id));
-      if (newJobs.length > 0) {
-        // Find the active session to inject them into
-        let activeSession = next.find(s => s.id === activeSessionId);
-        if (!activeSession) {
-          activeSession = next[0]; // fallback
-        }
-        activeSession.jobs = [...activeSession.jobs, ...newJobs];
-
-        // Auto-name the session based on the first prompt if it's currently "New Chat"
-        if (activeSession.name === 'New Chat' && activeSession.jobs.length > 0) {
-           activeSession.name = activeSession.jobs[0].prompt.slice(0, 30) + (activeSession.jobs[0].prompt.length > 30 ? '...' : '');
-        }
-      }
-
-      // We also need to update status of existing jobs (e.g., RUNNING -> COMPLETED)
-      next.forEach(session => {
-        session.jobs = session.jobs.map(localJob => {
-          const updatedFromServer = recentJobs.find(rj => rj.id === localJob.id);
-          return updatedFromServer ? updatedFromServer : localJob;
-        });
-      });
-
-      return next;
-    });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [recentJobs]); // Only re-run when recentJobs changes from context
+  const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
+  const [editSessionName, setEditSessionName] = useState('');
+  const [hoveredSessionId, setHoveredSessionId] = useState<string | null>(null);
 
   // Auto-select first model if none selected
   useEffect(() => {
@@ -680,9 +688,22 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
 
     setSubmitting(true);
     try {
+      let currentSessionId = activeSessionId;
+      if (currentSessionId === 'default') {
+        const res = await axios.post(`${API_URL}/api/computing/sessions/`, { name: prompt.slice(0, 30) }, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        currentSessionId = res.data.id;
+        setSessions(prev => {
+          const cleaned = prev.filter(s => s.id !== 'default');
+          return [res.data, ...cleaned];
+        });
+        setActiveSessionId(currentSessionId);
+      }
+
       const response = await axios.post(
         `${API_URL}/api/computing/submit-job/`,
-        { prompt, model: selectedModel },
+        { prompt, model: selectedModel, session_id: currentSessionId },
         { headers: { Authorization: `Bearer ${token}` } }
       );
       setActiveJobId(response.data.job_id);
@@ -691,6 +712,22 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
       alert(`Error submitting job: ${err.response?.data?.error || err.message}`);
     }
     setSubmitting(false);
+  };
+
+  const handleRenameSession = async (sessionId: string, newName: string) => {
+    if (!newName.trim()) return;
+    setSessions(prev => prev.map(s => s.id === sessionId ? { ...s, name: newName } : s));
+    setEditingSessionId(null);
+    if (sessionId === 'default') return;
+    try {
+      await axios.patch(
+        `${API_URL}/api/computing/sessions/${sessionId}/`,
+        { name: newName },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+    } catch (err) {
+      console.error("Failed to rename session:", err);
+    }
   };
 
   const handleNewChat = () => {
@@ -704,7 +741,7 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
   
   return (
     <div className="playground-container" style={{
-      display: 'flex', height: 'calc(100vh - 160px)', 
+      display: 'flex', height: 'calc(100vh - 160px)', minHeight: '600px',
       background: 'var(--bg-card)', borderRadius: '12px',
       border: '1px solid var(--border)', overflow: 'hidden'
     }}>
@@ -733,23 +770,97 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
             Recent Sessions
           </div>
           {sessions.map(session => (
-            <button
-              key={session.id}
-              onClick={() => setActiveSessionId(session.id)}
-              style={{
-                display: 'flex', alignItems: 'center', gap: '10px',
-                padding: '10px', borderRadius: '8px', width: '100%', textAlign: 'left',
-                background: activeSessionId === session.id ? 'var(--accent-dim)' : 'transparent',
-                border: activeSessionId === session.id ? '1px solid rgba(212,160,55,0.3)' : '1px solid transparent',
-                color: activeSessionId === session.id ? 'var(--accent)' : 'var(--text-primary)',
-                cursor: 'pointer', transition: 'all 0.2s', overflow: 'hidden'
-              }}
+            <div 
+              key={session.id} 
+              style={{ position: 'relative', display: 'flex', width: '100%' }}
+              onMouseEnter={() => setHoveredSessionId(session.id)}
+              onMouseLeave={() => setHoveredSessionId(null)}
             >
-              <MessageSquare size={16} style={{ flexShrink: 0, color: activeSessionId === session.id ? 'var(--accent)' : 'var(--text-muted)' }} />
-              <div style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '13px' }}>
-                {session.name}
-              </div>
-            </button>
+              <button
+                onClick={() => {
+                  if (activeSessionId !== session.id) setActiveSessionId(session.id);
+                }}
+                style={{
+                  display: 'flex', alignItems: 'center', gap: '10px',
+                  padding: '10px', borderRadius: '8px', width: '100%', textAlign: 'left',
+                  background: activeSessionId === session.id ? 'var(--accent-dim)' : 'transparent',
+                  border: activeSessionId === session.id ? '1px solid rgba(212,160,55,0.3)' : '1px solid transparent',
+                  color: activeSessionId === session.id ? 'var(--accent)' : 'var(--text-primary)',
+                  cursor: 'pointer', transition: 'all 0.2s', overflow: 'hidden'
+                }}
+              >
+                <MessageSquare size={16} style={{ flexShrink: 0, color: activeSessionId === session.id ? 'var(--accent)' : 'var(--text-muted)' }} />
+                {editingSessionId === session.id ? (
+                  <div style={{ display: 'flex', alignItems: 'center', flex: 1, gap: '6px', minWidth: 0, overflow: 'hidden' }}>
+                    <input
+                      autoFocus
+                      value={editSessionName}
+                      onChange={e => setEditSessionName(e.target.value)}
+                      onBlur={() => handleRenameSession(session.id, editSessionName || session.name)}
+                      onKeyDown={e => {
+                        if (e.key === 'Enter') {
+                          e.preventDefault();
+                          e.stopPropagation();
+                          e.currentTarget.blur();
+                        }
+                      }}
+                      style={{
+                        background: 'rgba(255,255,255,0.05)',
+                        border: '1px solid var(--border-accent, rgba(255,255,255,0.1))',
+                        color: 'var(--text-primary)',
+                        outline: 'none',
+                        flex: 1,
+                        minWidth: 0,
+                        fontSize: '13px',
+                        padding: '4px 8px',
+                        boxShadow: 'inset 0 1px 3px rgba(0,0,0,0.2)',
+                        width: '100%'
+                      }}
+                      onClick={(e) => e.stopPropagation()}
+                    />
+                    <div
+                      onMouseDown={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleRenameSession(session.id, editSessionName || session.name);
+                      }}
+                      style={{ 
+                        padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                        borderRadius: '4px', background: 'rgba(34,197,94,0.15)', cursor: 'pointer',
+                        color: 'var(--success)', flexShrink: 0
+                      }}
+                      title="Save chat name"
+                    >
+                      <Check size={14} />
+                    </div>
+                  </div>
+                ) : (
+                  <div style={{ display: 'flex', flex: 1, alignItems: 'center', justifyContent: 'space-between', overflow: 'hidden' }}>
+                    <div 
+                      style={{ whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', fontSize: '13px', flex: 1, paddingRight: '8px' }}
+                    >
+                      {session.name}
+                    </div>
+                    {hoveredSessionId === session.id && (
+                      <div 
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setEditingSessionId(session.id);
+                          setEditSessionName(session.name);
+                        }}
+                        style={{ 
+                          padding: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center',
+                          borderRadius: '4px', background: 'rgba(255,255,255,0.1)', cursor: 'pointer'
+                        }}
+                        title="Edit chat name"
+                      >
+                        <Pencil size={12} />
+                      </div>
+                    )}
+                  </div>
+                )}
+              </button>
+            </div>
           ))}
         </div>
       </div>
@@ -868,7 +979,11 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
               />
               
               {/* Custom Model Dropdown */}
-              <div style={{ position: 'relative' }}>
+              <div 
+                style={{ position: 'relative' }} 
+                onMouseEnter={() => setIsModelDropdownOpen(true)}
+                onMouseLeave={() => setIsModelDropdownOpen(false)}
+              >
                 <button
                   type="button"
                   onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
@@ -889,16 +1004,25 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
                   <ChevronUp size={16} style={{ color: 'var(--text-muted)', marginLeft: '4px', transform: isModelDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
                 </button>
 
-                {/* Dropdown Menu */}
-                {isModelDropdownOpen && models.length > 0 && (
+                {/* Dropdown Menu Wrapper with Invisible Bridge */}
+                {models.length > 0 && (
                   <div style={{
-                    position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
-                    width: 'max-content', minWidth: '240px',
-                    background: 'var(--bg-card)', border: '1px solid var(--border)',
-                    borderRadius: '12px', padding: '8px',
-                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100,
-                    display: 'flex', flexDirection: 'column', gap: '4px'
+                    position: 'absolute', bottom: '100%', left: 0,
+                    paddingBottom: '8px', zIndex: 100, // Provides 8px invisible hit area gap bridge
+                    opacity: isModelDropdownOpen ? 1 : 0,
+                    visibility: isModelDropdownOpen ? 'visible' : 'hidden',
+                    transform: isModelDropdownOpen ? 'translateY(0)' : 'translateY(10px)',
+                    transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)',
+                    pointerEvents: isModelDropdownOpen ? 'auto' : 'none'
                   }}>
+                    {/* Actual visible dropdown menu */}
+                    <div style={{
+                      width: 'max-content', minWidth: '240px',
+                      background: 'var(--bg-primary)', border: '1px solid var(--border)',
+                      borderRadius: '12px', padding: '8px',
+                      boxShadow: '0 8px 32px rgba(0,0,0,0.8)',
+                      display: 'flex', flexDirection: 'column', gap: '4px'
+                    }}>
                     <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 8px', marginBottom: '4px' }}>
                       Available Models
                     </div>
@@ -906,6 +1030,7 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
                       <button
                         key={m.name}
                         type="button"
+                        className="dropdown-item"
                         onClick={() => {
                           setSelectedModel(m.name);
                           setIsModelDropdownOpen(false);
@@ -925,6 +1050,7 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
                         <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--success)' }}>$1.00</span>
                       </button>
                     ))}
+                    </div>
                   </div>
                 )}
               </div>
@@ -949,7 +1075,7 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
             </div>
           </form>
           <div style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
-            Inference is powered by the decentralized GPU Connect network. Costs are directly deducted from your balance.
+            Inference is powered by the decentralized GPU Connect network. Costs ($1.00/job) are automatically deducted. Available Balance: <strong style={{color: 'var(--accent)'}}>${balance?.toFixed(2) || '0.00'}</strong>
           </div>
         </div>
       </div>
@@ -960,7 +1086,7 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
 /* ===== MAIN DASHBOARD ===== */
 export const Dashboard: React.FC = () => {
   const { user, token, logout } = useAuth();
-  const { balance } = useDashboard();
+  const { balance, setActiveSessionId } = useDashboard();
   const [activeTab, setActiveTab] = useState(() => {
     const params = new URLSearchParams(window.location.search);
     return params.get('tab') || 'overview';
@@ -998,13 +1124,17 @@ export const Dashboard: React.FC = () => {
           </h2>
         </header>
 
+        {activeTab !== 'playground' && (
+          <div className="dashboard-grid">
+            <WalletCard balance={balance || 0} onRefresh={() => {}} />
+
+            <StatCard label="Credits Earned" value={`$${Math.max(0, (balance || 0) - 100 + (100 - (balance || 0) < 0 ? 0 : 100 - (balance || 0))).toFixed(0)}`} sub="from providing" color="var(--success)" icon={TrendingUp} />
+
+            <StatCard label="Cost Per Job" value="$1.00" sub="per inference" />
+          </div>
+        )}
+
         <div className="dashboard-grid">
-          <WalletCard balance={balance || 0} onRefresh={() => {}} />
-
-          <StatCard label="Credits Earned" value={`$${Math.max(0, (balance || 0) - 100 + (100 - (balance || 0) < 0 ? 0 : 100 - (balance || 0))).toFixed(0)}`} sub="from providing" color="var(--success)" icon={TrendingUp} />
-
-          <StatCard label="Cost Per Job" value="$1.00" sub="per inference" />
-
           <div className="grid-full-width">
             {activeTab === 'overview' && (
               <div className="overview-grid">
@@ -1013,7 +1143,7 @@ export const Dashboard: React.FC = () => {
                   <LiveModels />
                 </div>
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <JobHistory />
+                  <RecentChats onSelectChat={(id) => { setActiveSessionId(id); setActiveTab('playground'); }} />
                 </div>
               </div>
             )}

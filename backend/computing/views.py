@@ -8,7 +8,7 @@ from rest_framework import views, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
-from .models import Job, Node
+from .models import Job, Node, ChatSession
 
 
 class JobSubmissionView(views.APIView):
@@ -48,13 +48,30 @@ class JobSubmissionView(views.APIView):
         user.wallet_balance -= job_cost
         user.save()
 
+        session_id = request.data.get("session_id")
+        session = None
+        if session_id:
+            try:
+                session = ChatSession.objects.get(id=session_id, user=user)
+            except ChatSession.DoesNotExist:
+                return Response(
+                    {"error": "Session not found or forbidden."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
+
         job = Job.objects.create(
             user=user,
+            session=session,
             task_type="inference",
             input_data={"prompt": prompt, "model": model},
             status="PENDING",
             cost=job_cost,
         )
+
+        # If session name is default, we can optionally auto-update it here
+        if session and session.name == 'New Chat':
+            session.name = prompt[:30] + ('...' if len(prompt) > 30 else '')
+            session.save()
 
         # Dispatch to all connected GPU provider nodes
         channel_layer = get_channel_layer()
@@ -86,6 +103,7 @@ class JobDetailView(views.APIView):
 
         return Response({
             "id": job.id,
+            "session_id": job.session_id,
             "status": job.status,
             "result": job.result,
             "prompt": job.input_data.get("prompt"),
@@ -105,6 +123,7 @@ class JobListView(views.APIView):
         jobs = Job.objects.filter(user=request.user).order_by('-created_at')
         data = [{
             "id": j.id,
+            "session_id": j.session_id,
             "status": j.status,
             "prompt": j.input_data.get("prompt", "")[:80],
             "model": j.input_data.get("model", ""),
@@ -181,3 +200,72 @@ class ProviderStatsView(views.APIView):
         days = int(request.query_params.get("days", 30))
         stats = get_provider_stats(request.user, days)
         return Response(stats)
+
+
+class SessionListView(views.APIView):
+    """List and create Chat Sessions."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        sessions = ChatSession.objects.filter(user=request.user).order_by('-created_at')
+        data = []
+        for s in sessions:
+            jobs = list(s.jobs.order_by('created_at').values(
+                'id', 'status', 'input_data', 'result', 'cost', 'created_at', 'completed_at'
+            ))
+            # Format jobs slightly
+            formatted_jobs = []
+            for j in jobs:
+                formatted_jobs.append({
+                    "id": j['id'],
+                    "status": j['status'],
+                    "prompt": j['input_data'].get('prompt', ''),
+                    "model": j['input_data'].get('model', ''),
+                    "cost": str(j['cost']) if j['cost'] else None,
+                    "result": j['result'],
+                    "created_at": j['created_at'],
+                    "completed_at": j['completed_at'],
+                })
+            
+            data.append({
+                "id": str(s.id),
+                "name": s.name,
+                "created_at": s.created_at,
+                "jobs": formatted_jobs,
+            })
+        return Response(data)
+
+    def post(self, request):
+        name = request.data.get("name", "New Chat")
+        session = ChatSession.objects.create(user=request.user, name=name)
+        return Response({
+            "id": str(session.id),
+            "name": session.name,
+            "created_at": session.created_at,
+            "jobs": []
+        }, status=status.HTTP_201_CREATED)
+
+
+class SessionDetailView(views.APIView):
+    """Retrieve, update or delete a specific Chat Session."""
+    permission_classes = [IsAuthenticated]
+
+    def patch(self, request, session_id):
+        session = get_object_or_404(ChatSession, id=session_id)
+        if session.user != request.user:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+        
+        name = request.data.get("name")
+        if name:
+            session.name = name
+            session.save()
+            return Response({"status": "success", "name": session.name})
+        return Response({"error": "No name provided"}, status=status.HTTP_400_BAD_REQUEST)
+
+    def delete(self, request, session_id):
+        session = get_object_or_404(ChatSession, id=session_id)
+        if session.user != request.user:
+            return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
+        
+        session.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

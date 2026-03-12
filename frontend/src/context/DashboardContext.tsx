@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { useAuth } from './AuthContext';
+import axios from 'axios';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/dashboard/';
 
@@ -23,6 +24,13 @@ interface JobInfo {
   result: any;
   created_at: string;
   completed_at: string | null;
+  session_id?: string;
+}
+
+export interface ChatSession {
+  id: string;
+  name: string;
+  jobs: JobInfo[];
 }
 
 interface DashboardContextType {
@@ -33,6 +41,10 @@ interface DashboardContextType {
   providerStats: any | null;
   setProviderDays: (days: number) => void;
   loading: boolean;
+  sessions: ChatSession[];
+  setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
+  activeSessionId: string;
+  setActiveSessionId: (id: string) => void;
 }
 
 const DashboardContext = createContext<DashboardContextType>({
@@ -42,7 +54,11 @@ const DashboardContext = createContext<DashboardContextType>({
   recentJobs: [],
   providerStats: null,
   setProviderDays: () => {},
-  loading: true
+  loading: true,
+  sessions: [],
+  setSessions: () => {},
+  activeSessionId: 'default',
+  setActiveSessionId: () => {}
 });
 
 export const useDashboard = () => useContext(DashboardContext);
@@ -56,6 +72,71 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [providerStats, setProviderStats] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   
+  // Chat Sessions global state
+  const [sessions, setSessions] = useState<ChatSession[]>([
+    { id: 'default', name: 'New Chat', jobs: [] }
+  ]);
+  const [activeSessionId, setActiveSessionId] = useState<string>('default');
+
+  // Fetch sessions from REST
+  useEffect(() => {
+    if (!token) return;
+    const fetchSessions = async () => {
+      try {
+        const res = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/computing/sessions/`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const backendSessions = res.data.map((s: any) => ({
+          ...s,
+          jobs: s.jobs || []
+        }));
+        setSessions(prev => {
+          const def = prev.find(p => p.id === 'default');
+          return def ? [def, ...backendSessions] : backendSessions;
+        });
+      } catch (err) {
+        console.error('Failed to fetch sessions', err);
+      }
+    };
+    fetchSessions();
+  }, [token]);
+
+  // Distribute incoming recentJobs into the active session
+  useEffect(() => {
+    if (recentJobs.length === 0) return;
+    
+    setSessions(prev => {
+      const next = [...prev];
+      const allMappedJobIds = new Set(next.flatMap(s => s.jobs.map(j => j.id)));
+      
+      const newJobs = recentJobs.filter(j => !allMappedJobIds.has(j.id));
+      if (newJobs.length > 0) {
+        newJobs.forEach(newJob => {
+          if (newJob.session_id) {
+            const targetSession = next.find(s => s.id === newJob.session_id);
+            if (targetSession) {
+              targetSession.jobs.push(newJob);
+            }
+          } else {
+            const activeSession = next.find(s => s.id === activeSessionId) || next[0];
+            if (activeSession) activeSession.jobs.push(newJob);
+          }
+        });
+      }
+
+      // Sync updated jobs (status changes)
+      next.forEach(session => {
+        session.jobs = session.jobs.map(localJob => {
+          const updatedFromServer = recentJobs.find(rj => rj.id === localJob.id);
+          return updatedFromServer ? updatedFromServer : localJob;
+        });
+      });
+
+      return next;
+    });
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recentJobs]);
+
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<any>(null);
 
@@ -152,7 +233,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [user]);
 
   return (
-    <DashboardContext.Provider value={{ stats, models, balance, recentJobs, providerStats, setProviderDays, loading }}>
+    <DashboardContext.Provider value={{ stats, models, balance, recentJobs, providerStats, setProviderDays, loading, sessions, setSessions, activeSessionId, setActiveSessionId }}>
       {children}
     </DashboardContext.Provider>
   );

@@ -309,6 +309,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
                 "max_retries": 1,
                 "job_data": {
                     "id": job.id,
+                    "session_id": str(job.session_id) if job.session_id else None,
                     "status": job.status,
                     "prompt": (
                         input_data.get("prompt", "")
@@ -623,6 +624,7 @@ class DashboardConsumer(AsyncWebsocketConsumer):
             is_dict = isinstance(input_data, dict)
             result.append({
                 "id": job.id,
+                "session_id": str(job.session_id) if job.session_id else None,
                 "status": job.status,
                 "prompt": (
                     input_data.get("prompt", "")
