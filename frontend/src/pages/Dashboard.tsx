@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboard } from '../context/DashboardContext';
-import { LayoutDashboard, Wallet, Server, Activity, RefreshCw, TrendingUp, Cpu, ArrowUpRight, ArrowDownRight, Filter, MessageSquare, Plus, Send, Zap, Loader2, User } from 'lucide-react';
+import { LayoutDashboard, Wallet, Server, Activity, RefreshCw, TrendingUp, Cpu, ArrowUpRight, ArrowDownRight, Filter, MessageSquare, Plus, Send, Zap, Loader2, User, ChevronUp } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
 import axios from 'axios';
 import './Dashboard.css';
@@ -622,6 +622,7 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
   const [selectedModel, setSelectedModel] = useState('');
   const [submitting, setSubmitting] = useState(false);
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
+  const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
 
   // Local Chat Sessions State
   // Since the backend doesn't yet support session grouping, we simulate it locally.
@@ -846,38 +847,14 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
               boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
             }}
           >
-            {/* Model Selection Above Input */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '4px' }}>
-              <Zap size={16} style={{ color: 'var(--accent)' }} />
-              <select
-                className="input-field"
-                value={selectedModel}
-                onChange={(e) => setSelectedModel(e.target.value)}
-                disabled={loadingModels || models.length === 0}
-                style={{ width: 'auto', minWidth: '200px', background: 'transparent', border: 'none', padding: '4px', fontSize: '13px', color: 'var(--accent)', fontWeight: 600, outline: 'none' }}
-              >
-                {loadingModels ? (
-                    <option>Loading models...</option>
-                ) : models.length === 0 ? (
-                    <option>No nodes connected</option>
-                ) : (
-                    models.map(m => (
-                        <option key={m.name} value={m.name} style={{ color: 'var(--text-primary)', background: 'var(--bg-secondary)' }}>
-                            {m.name} — {m.providers} node{m.providers > 1 ? 's' : ''} (Cost: $1.00)
-                        </option>
-                    ))
-                )}
-              </select>
-            </div>
-
-            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end', position: 'relative' }}>
               <textarea
                 value={prompt}
                 onChange={e => setPrompt(e.target.value)}
                 placeholder="Message the network..."
                 style={{
                   flex: 1, background: 'transparent', border: 'none',
-                  color: 'var(--text-primary)', padding: '4px 8px',
+                  color: 'var(--text-primary)', padding: '8px 12px',
                   fontSize: '15px', resize: 'none', height: '44px',
                   maxHeight: '200px', outline: 'none', fontFamily: 'var(--font-body)',
                   lineHeight: '1.5'
@@ -889,6 +866,70 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
                   }
                 }}
               />
+              
+              {/* Custom Model Dropdown */}
+              <div style={{ position: 'relative' }}>
+                <button
+                  type="button"
+                  onClick={() => setIsModelDropdownOpen(!isModelDropdownOpen)}
+                  disabled={loadingModels || models.length === 0}
+                  style={{
+                    display: 'flex', alignItems: 'center', gap: '6px',
+                    background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
+                    borderRadius: '8px', padding: '10px 14px',
+                    color: 'var(--text-primary)', fontSize: '13px', fontWeight: 500,
+                    cursor: (loadingModels || models.length === 0) ? 'not-allowed' : 'pointer',
+                    transition: 'all 0.2s', height: '44px', whiteSpace: 'nowrap'
+                  }}
+                >
+                  <Zap size={16} style={{ color: 'var(--accent)' }} />
+                  <span className="hidden-mobile">
+                    {loadingModels ? 'Loading...' : (selectedModel || 'Select Model')}
+                  </span>
+                  <ChevronUp size={16} style={{ color: 'var(--text-muted)', marginLeft: '4px', transform: isModelDropdownOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+                </button>
+
+                {/* Dropdown Menu */}
+                {isModelDropdownOpen && models.length > 0 && (
+                  <div style={{
+                    position: 'absolute', bottom: 'calc(100% + 8px)', right: 0,
+                    width: 'max-content', minWidth: '240px',
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderRadius: '12px', padding: '8px',
+                    boxShadow: '0 8px 32px rgba(0,0,0,0.4)', zIndex: 100,
+                    display: 'flex', flexDirection: 'column', gap: '4px'
+                  }}>
+                    <div style={{ fontSize: '11px', color: 'var(--text-muted)', textTransform: 'uppercase', letterSpacing: '0.5px', padding: '4px 8px', marginBottom: '4px' }}>
+                      Available Models
+                    </div>
+                    {models.map(m => (
+                      <button
+                        key={m.name}
+                        type="button"
+                        onClick={() => {
+                          setSelectedModel(m.name);
+                          setIsModelDropdownOpen(false);
+                        }}
+                        style={{
+                          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
+                          padding: '10px 12px', borderRadius: '8px',
+                          background: selectedModel === m.name ? 'var(--accent-dim)' : 'transparent',
+                          border: 'none', color: selectedModel === m.name ? 'var(--accent)' : 'var(--text-primary)',
+                          cursor: 'pointer', textAlign: 'left', transition: 'background 0.2s'
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '2px' }}>
+                          <span style={{ fontWeight: 600, fontSize: '13px' }}>{m.name}</span>
+                          <span style={{ fontSize: '11px', color: 'var(--text-muted)' }}>{m.providers} node{m.providers > 1 ? 's' : ''} active</span>
+                        </div>
+                        <span style={{ fontSize: '12px', fontWeight: 600, color: 'var(--success)' }}>$1.00</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Submit Button */}
               <button
                 type="submit"
                 disabled={submitting || !!activeJobId || !prompt.trim() || models.length === 0}
@@ -897,15 +938,13 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
                     ? 'rgba(255,255,255,0.1)' : 'var(--accent)',
                   color: (submitting || !!activeJobId || !prompt.trim() || models.length === 0) 
                     ? 'rgba(255,255,255,0.3)' : 'var(--bg-primary)',
-                  border: 'none', borderRadius: '8px', padding: '10px 16px',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  border: 'none', borderRadius: '8px', padding: '0 16px', height: '44px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
                   cursor: (submitting || !!activeJobId || !prompt.trim() || models.length === 0) ? 'not-allowed' : 'pointer',
-                  transition: 'all 0.2s', fontWeight: 600, fontSize: '13px',
-                  marginBottom: '4px'
+                  transition: 'all 0.2s', fontWeight: 600, fontSize: '13px'
                 }}
               >
                 {(submitting || !!activeJobId) ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
-                <span className="hidden-mobile">Submit</span>
               </button>
             </div>
           </form>
