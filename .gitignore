@@ -72,3 +72,6 @@ Thumbs.db
 agent/build/
 agent/dist/
 agent/*.spec
+gpu-connect-agent.exe
+*.exe
+!frontend/public/downloads/*.exe

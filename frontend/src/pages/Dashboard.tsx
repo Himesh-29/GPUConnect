@@ -237,6 +237,7 @@ const AgentTokenManager = ({ token }: { token: string | null }) => {
     } catch { /* ignore */ }
   };
 
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => { fetchTokens(); }, []);
 
   const generateToken = async () => {
