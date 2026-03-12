@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { useAuth } from '../context/AuthContext';
 import { useDashboard } from '../context/DashboardContext';
-import { LayoutDashboard, Wallet, Server, Activity, RefreshCw, TrendingUp, Cpu, ArrowUpRight, ArrowDownRight, Filter } from 'lucide-react';
+import { LayoutDashboard, Wallet, Server, Activity, RefreshCw, TrendingUp, Cpu, ArrowUpRight, ArrowDownRight, Filter, MessageSquare, Send, Zap, Loader2, User } from 'lucide-react';
 import { AreaChart, Area, BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, PieChart, Pie, Cell } from 'recharts';
-import JobSubmitter from '../components/JobSubmitter';
 import axios from 'axios';
 import './Dashboard.css';
 
@@ -616,6 +615,219 @@ const ProviderDashboard = ({ token }: { token: string | null }) => {
 };
 
 
+/* ===== PLAYGROUND / CHAT DASHBOARD ===== */
+const PlaygroundDashboard = ({ token }: { token: string | null }) => {
+  const { models, recentJobs, loading: loadingModels } = useDashboard();
+  const [prompt, setPrompt] = useState('');
+  const [selectedModel, setSelectedModel] = useState('');
+  const [submitting, setSubmitting] = useState(false);
+  const [activeJobId, setActiveJobId] = useState<number | null>(null);
+
+  // Auto-select first model if none selected
+  useEffect(() => {
+    if (!selectedModel && models.length > 0) {
+      setSelectedModel(models[0].name);
+    }
+  }, [models, selectedModel]);
+
+  const handleSubmit = async (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    if (!prompt.trim() || !selectedModel || submitting || !!activeJobId) return;
+
+    setSubmitting(true);
+    try {
+      const response = await axios.post(
+        `${API_URL}/api/computing/submit-job/`,
+        { prompt, model: selectedModel },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      setActiveJobId(response.data.job_id);
+      setPrompt('');
+    } catch (err: any) {
+      alert(`Error submitting job: ${err.response?.data?.error || err.message}`);
+    }
+    setSubmitting(false);
+  };
+
+  // Group jobs by session. Since we don't have real chat sessions yet, 
+  // we'll just show the recent jobs as a single continuous thread.
+  // Sort ascending by ID (oldest first) so they stack like a chat.
+  const chatJobs = [...recentJobs].sort((a, b) => a.id - b.id);
+
+  // Auto scroll to bottom effect could go here
+  
+  return (
+    <div className="playground-container" style={{
+      display: 'flex', height: 'calc(100vh - 160px)', 
+      background: 'var(--bg-card)', borderRadius: '12px',
+      border: '1px solid var(--border)', overflow: 'hidden'
+    }}>
+      
+      {/* Main Chat Area */}
+      <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
+        
+        {/* Top bar - Model Selection */}
+        <div style={{
+          padding: '12px 20px', borderBottom: '1px solid var(--border)',
+          display: 'flex', justifyContent: 'center', alignItems: 'center',
+          background: 'rgba(255,255,255,0.02)'
+        }}>
+          <select
+            className="input-field"
+            value={selectedModel}
+            onChange={(e) => setSelectedModel(e.target.value)}
+            disabled={loadingModels || models.length === 0}
+            style={{ width: 'auto', minWidth: '250px', background: 'var(--bg-secondary)' }}
+          >
+            {loadingModels ? (
+                <option>Loading models...</option>
+            ) : models.length === 0 ? (
+                <option>No nodes connected</option>
+            ) : (
+                models.map(m => (
+                    <option key={m.name} value={m.name}>
+                        {m.name} — {m.providers} node{m.providers > 1 ? 's' : ''} (Cost: $1.00)
+                    </option>
+                ))
+            )}
+          </select>
+        </div>
+
+        {/* Chat Messages */}
+        <div style={{
+          flex: 1, overflowY: 'auto', padding: '24px',
+          display: 'flex', flexDirection: 'column', gap: '24px'
+        }}>
+          {chatJobs.length === 0 ? (
+            <div className="empty-state" style={{ height: '100%' }}>
+              <Zap size={48} style={{ color: 'var(--accent)', opacity: 0.3, marginBottom: '16px' }} />
+              <h3 style={{ color: 'var(--text-primary)', marginBottom: '8px' }}>GPU Connect Playground</h3>
+              <p style={{ maxWidth: '400px', textAlign: 'center', lineHeight: '1.6' }}>
+                Select a model from the dropdown above and send a message to start prompting the decentralized network.
+              </p>
+            </div>
+          ) : (
+            chatJobs.map(job => (
+              <React.Fragment key={job.id}>
+                {/* User Prompt */}
+                <div style={{ display: 'flex', gap: '16px', flexDirection: 'row-reverse' }}>
+                  <div style={{
+                    width: '36px', height: '36px', borderRadius: '50%',
+                    background: 'var(--bg-secondary)', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                  }}>
+                    <User size={18} style={{ color: 'var(--text-muted)' }} />
+                  </div>
+                  <div style={{
+                    background: 'var(--accent-dim)', padding: '12px 16px',
+                    borderRadius: '16px 4px 16px 16px', color: 'var(--text-primary)',
+                    maxWidth: '75%', fontSize: '14px', lineHeight: '1.5',
+                    border: '1px solid rgba(212,160,55,0.2)'
+                  }}>
+                    {job.prompt}
+                  </div>
+                </div>
+
+                {/* AI Response */}
+                <div style={{ display: 'flex', gap: '16px' }}>
+                  <div style={{
+                    width: '36px', height: '36px', borderRadius: '4px',
+                    background: 'var(--accent)', display: 'flex',
+                    alignItems: 'center', justifyContent: 'center', flexShrink: 0
+                  }}>
+                    <Zap size={20} style={{ color: 'var(--bg-primary)' }} />
+                  </div>
+                  <div style={{
+                    background: 'rgba(255,255,255,0.03)', padding: '16px',
+                    borderRadius: '4px 16px 16px 16px', color: 'var(--text-primary)',
+                    maxWidth: '85%', fontSize: '14px', lineHeight: '1.6',
+                    border: '1px solid var(--border)', flex: 1
+                  }}>
+                    {job.status === 'RUNNING' && (
+                      <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent)' }}>
+                        <Loader2 size={16} className="spin" />
+                        Generating response...
+                      </div>
+                    )}
+                    {job.status === 'FAILED' && (
+                      <div style={{ color: 'var(--error)' }}>
+                        <strong>Error:</strong> {job.result?.error || 'Job failed to complete'}
+                      </div>
+                    )}
+                    {job.result?.output && (
+                      <div style={{ whiteSpace: 'pre-wrap' }}>{job.result.output}</div>
+                    )}
+                    <div style={{
+                      display: 'flex', gap: '12px', marginTop: '12px',
+                      fontSize: '11px', color: 'var(--text-muted)'
+                    }}>
+                      <span>Model: {job.model}</span>
+                      <span>Cost: $1.00</span>
+                      {job.status === 'COMPLETED' && <span>✅ Completed</span>}
+                    </div>
+                  </div>
+                </div>
+              </React.Fragment>
+            ))
+          )}
+        </div>
+
+        {/* Chat Input */}
+        <div style={{ padding: '20px', background: 'var(--bg-secondary)', borderTop: '1px solid var(--border)' }}>
+          <form 
+            onSubmit={handleSubmit}
+            style={{
+              display: 'flex', gap: '12px', alignItems: 'flex-end',
+              background: 'var(--bg-card)', padding: '8px', 
+              borderRadius: '12px', border: '1px solid var(--border)',
+              boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
+            }}
+          >
+            <textarea
+              value={prompt}
+              onChange={e => setPrompt(e.target.value)}
+              placeholder="Message the network..."
+              style={{
+                flex: 1, background: 'transparent', border: 'none',
+                color: 'var(--text-primary)', padding: '8px 12px',
+                fontSize: '15px', resize: 'none', height: '44px',
+                maxHeight: '200px', outline: 'none', fontFamily: 'var(--font-body)',
+                lineHeight: '1.5'
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey) {
+                  e.preventDefault();
+                  handleSubmit();
+                }
+              }}
+            />
+            <button
+              type="submit"
+              disabled={submitting || !!activeJobId || !prompt.trim() || models.length === 0}
+              style={{
+                background: (submitting || !!activeJobId || !prompt.trim() || models.length === 0) 
+                  ? 'rgba(255,255,255,0.1)' : 'var(--accent)',
+                color: (submitting || !!activeJobId || !prompt.trim() || models.length === 0) 
+                  ? 'rgba(255,255,255,0.3)' : 'var(--bg-primary)',
+                border: 'none', borderRadius: '8px', padding: '10px 16px',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                cursor: (submitting || !!activeJobId || !prompt.trim() || models.length === 0) ? 'not-allowed' : 'pointer',
+                transition: 'all 0.2s', fontWeight: 600, fontSize: '13px'
+              }}
+            >
+              {(submitting || !!activeJobId) ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
+              <span className="hidden-mobile">Submit ($1.00)</span>
+            </button>
+          </form>
+          <div style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
+            Inference is powered by the decentralized GPU Connect network. Costs are directly deducted from your balance.
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 /* ===== MAIN DASHBOARD ===== */
 export const Dashboard: React.FC = () => {
   const { user, token, logout } = useAuth();
@@ -632,6 +844,7 @@ export const Dashboard: React.FC = () => {
       <aside className="dashboard-sidebar">
         <div className="sidebar-nav">
           <SidebarItem icon={LayoutDashboard} label="Overview" active={activeTab === 'overview'} onClick={() => setActiveTab('overview')} />
+          <SidebarItem icon={MessageSquare} label="Playground" active={activeTab === 'playground'} onClick={() => setActiveTab('playground')} />
           <SidebarItem icon={TrendingUp} label="Provider" active={activeTab === 'provider'} onClick={() => setActiveTab('provider')} />
           <SidebarItem icon={Wallet} label="Wallet" active={activeTab === 'wallet'} onClick={() => setActiveTab('wallet')} />
           <SidebarItem icon={Server} label="Network" active={activeTab === 'network'} onClick={() => setActiveTab('network')} />
@@ -666,13 +879,18 @@ export const Dashboard: React.FC = () => {
           <div className="grid-full-width">
             {activeTab === 'overview' && (
               <div className="overview-grid">
-                <JobSubmitter />
                 <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
-                  <JobHistory />
                   <NodesPanel />
                   <LiveModels />
                 </div>
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '20px' }}>
+                  <JobHistory />
+                </div>
               </div>
+            )}
+
+            {activeTab === 'playground' && (
+              <PlaygroundDashboard token={token} />
             )}
 
             {activeTab === 'provider' && (
