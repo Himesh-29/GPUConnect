@@ -135,30 +135,58 @@ async def execute_task(ws, task_data):
             ) as response:
                 if response.status == 200:
                     if stream:
-                        # Read streaming chunks line by line
-                        async for line in response.content:
-                            if line:
+                        # Buffer by newline and parse complete JSON lines to handle
+                        # chunks that may not align with JSON object boundaries
+                        buffer = b""
+                        async for raw_chunk in response.content:
+                            if not raw_chunk:
+                                continue
+                            buffer += raw_chunk
+                            while b"\n" in buffer:
+                                line, buffer = buffer.split(b"\n", 1)
+                                if not line.strip():
+                                    continue
                                 try:
-                                    chunk_data = json.loads(line.decode('utf-8'))
-                                    chunk_text = chunk_data.get("response", "")
-                                    full_response += chunk_text
-                                    
-                                    if chunk_text:
-                                        # Send partial chunk to server
-                                        stream_payload = json.dumps({
-                                            "type": "job_stream",
-                                            "result": {
-                                                "task_id": task_id,
-                                                "owner_id": owner_id,
-                                                "chunk": chunk_text
-                                            }
-                                        }, ensure_ascii=False)
-                                        await ws.send_str(stream_payload)
-                                    
-                                    if chunk_data.get("done"):
-                                        break
+                                    chunk_data = json.loads(line.decode("utf-8"))
                                 except json.JSONDecodeError:
                                     continue
+                                chunk_text = chunk_data.get("response", "")
+                                full_response += chunk_text
+
+                                if chunk_text:
+                                    # Send partial chunk to server
+                                    stream_payload = json.dumps({
+                                        "type": "job_stream",
+                                        "result": {
+                                            "task_id": task_id,
+                                            "owner_id": owner_id,
+                                            "chunk": chunk_text
+                                        }
+                                    }, ensure_ascii=False)
+                                    await ws.send_str(stream_payload)
+
+                                if chunk_data.get("done"):
+                                    buffer = b""
+                                    break
+
+                        # Process any remaining buffered data after the stream ends
+                        if buffer.strip():
+                            try:
+                                chunk_data = json.loads(buffer.decode("utf-8"))
+                                chunk_text = chunk_data.get("response", "")
+                                full_response += chunk_text
+                                if chunk_text:
+                                    stream_payload = json.dumps({
+                                        "type": "job_stream",
+                                        "result": {
+                                            "task_id": task_id,
+                                            "owner_id": owner_id,
+                                            "chunk": chunk_text
+                                        }
+                                    }, ensure_ascii=False)
+                                    await ws.send_str(stream_payload)
+                            except json.JSONDecodeError:
+                                pass
                         
                         logger.info(f"Streaming Task {task_id} Completed. ({len(full_response)} chars)")
                         return {"status": "success", "response": full_response, "task_id": task_id}
