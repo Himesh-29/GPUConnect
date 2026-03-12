@@ -78,6 +78,12 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     { id: 'default', name: 'New Chat', jobs: [] }
   ]);
   const [activeSessionId, setActiveSessionId] = useState<string>('default');
+  // Keep a ref that always reflects the latest activeSessionId to avoid stale closures
+  const activeSessionIdRef = useRef<string>('default');
+  const _setActiveSessionId = (id: string) => {
+    activeSessionIdRef.current = id;
+    setActiveSessionId(id);
+  };
 
   // Fetch sessions from REST
   useEffect(() => {
@@ -102,40 +108,48 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
     fetchSessions();
   }, [token]);
 
-  // Distribute incoming recentJobs into the active session
+  // Distribute incoming recentJobs into sessions (fully immutable updates)
   useEffect(() => {
     if (recentJobs.length === 0) return;
-    
-    setSessions(prev => {
-      const next = [...prev];
-      const allMappedJobIds = new Set(next.flatMap(s => s.jobs.map(j => j.id)));
-      
-      const newJobs = recentJobs.filter(j => !allMappedJobIds.has(j.id));
-      if (newJobs.length > 0) {
-        newJobs.forEach(newJob => {
-          if (newJob.session_id) {
-            const targetSession = next.find(s => s.id === newJob.session_id);
-            if (targetSession) {
-              targetSession.jobs.push(newJob);
-            }
-          } else {
-            const activeSession = next.find(s => s.id === activeSessionId) || next[0];
-            if (activeSession) activeSession.jobs.push(newJob);
-          }
-        });
-      }
 
-      // Sync updated jobs (status changes)
-      next.forEach(session => {
-        session.jobs = session.jobs.map(localJob => {
-          const updatedFromServer = recentJobs.find(rj => rj.id === localJob.id);
-          return updatedFromServer ? updatedFromServer : localJob;
-        });
+    setSessions(prev => {
+      if (prev.length === 0) return prev;
+
+      // Index recent jobs by id for O(1) status sync
+      const recentJobsById = new Map(recentJobs.map(j => [j.id, j]));
+
+      // Collect all job ids already tracked in any session
+      const allMappedJobIds = new Set(prev.flatMap(s => s.jobs.map(j => j.id)));
+
+      // Only consider jobs we haven't seen before
+      const newJobs = recentJobs.filter(j => !allMappedJobIds.has(j.id));
+
+      // Determine target session for each new job
+      const newJobsBySessionId = new Map<string, any[]>();
+      const fallbackSessionId = activeSessionIdRef.current || prev[0]?.id;
+      newJobs.forEach(newJob => {
+        const targetId = newJob.session_id ? String(newJob.session_id) : fallbackSessionId;
+        if (!targetId) return;
+        const list = newJobsBySessionId.get(targetId) || [];
+        list.push(newJob);
+        newJobsBySessionId.set(targetId, list);
       });
 
-      return next;
+      // Build a new sessions array with new session/job objects
+      return prev.map(session => {
+        // Sync updated jobs (status changes) immutably
+        const syncedJobs = session.jobs.map(localJob => {
+          const updated = recentJobsById.get(localJob.id);
+          return updated ? updated : localJob;
+        });
+        // Append new jobs belonging to this session
+        const extraJobs = newJobsBySessionId.get(session.id) || [];
+        if (extraJobs.length === 0 && syncedJobs.every((j, i) => j === session.jobs[i])) {
+          return session; // no changes — keep same reference
+        }
+        return { ...session, jobs: [...syncedJobs, ...extraJobs] };
+      });
     });
-  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [recentJobs]);
 
   const ws = useRef<WebSocket | null>(null);
@@ -199,18 +213,25 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
         });
         break;
       case 'job_stream':
-        setSessions(prev => {
-          const next = [...prev];
-          // Find the job in any session and update it
-          for (const session of next) {
-            const job = session.jobs.find(j => j.id === msg.task_id);
-            if (job) {
-              job.streamed_text = (job.streamed_text || '') + msg.chunk;
-              break;
-            }
-          }
-          return next;
-        });
+        setSessions(prev =>
+          prev.map(session => {
+            const jobIndex = session.jobs.findIndex((j: any) => j.id === msg.task_id);
+            if (jobIndex === -1) return session;
+            const oldJob = session.jobs[jobIndex];
+            const updatedJob = {
+              ...oldJob,
+              streamed_text: (oldJob.streamed_text || '') + msg.chunk,
+            };
+            return {
+              ...session,
+              jobs: [
+                ...session.jobs.slice(0, jobIndex),
+                updatedJob,
+                ...session.jobs.slice(jobIndex + 1),
+              ],
+            };
+          })
+        );
         break;
       case 'provider_stats_update':
         setProviderStats(msg.stats);
@@ -248,7 +269,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [user]);
 
   return (
-    <DashboardContext.Provider value={{ stats, models, balance, recentJobs, providerStats, setProviderDays, loading, sessions, setSessions, activeSessionId, setActiveSessionId }}>
+    <DashboardContext.Provider value={{ stats, models, balance, recentJobs, providerStats, setProviderDays, loading, sessions, setSessions, activeSessionId, setActiveSessionId: _setActiveSessionId }}>
       {children}
     </DashboardContext.Provider>
   );

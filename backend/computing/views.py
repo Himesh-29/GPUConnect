@@ -3,6 +3,7 @@ from decimal import Decimal
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import views, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
@@ -21,13 +22,29 @@ class JobSubmissionView(views.APIView):
 
         prompt = request.data.get("prompt")
         model = request.data.get("model", "llama3.2:latest")
-        stream = request.data.get("stream", False)
+        raw_stream = request.data.get("stream", False)
+        if isinstance(raw_stream, str):
+            stream = raw_stream.lower() in ("true", "1", "yes", "on")
+        else:
+            stream = bool(raw_stream)
 
         if not prompt:
             return Response(
                 {"error": "Prompt is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Validate session before touching the wallet
+        session_id = request.data.get("session_id")
+        session = None
+        if session_id:
+            try:
+                session = ChatSession.objects.get(id=session_id, user=user)
+            except ChatSession.DoesNotExist:
+                return Response(
+                    {"error": "Session not found or forbidden."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
         # Ensure there are active nodes NOT owned by this user
         other_nodes = Node.objects.filter(is_active=True).exclude(owner=user)
@@ -46,28 +63,18 @@ class JobSubmissionView(views.APIView):
                 status=status.HTTP_402_PAYMENT_REQUIRED,
             )
 
-        user.wallet_balance -= job_cost
-        user.save()
+        with transaction.atomic():
+            user.wallet_balance -= job_cost
+            user.save(update_fields=['wallet_balance'])
 
-        session_id = request.data.get("session_id")
-        session = None
-        if session_id:
-            try:
-                session = ChatSession.objects.get(id=session_id, user=user)
-            except ChatSession.DoesNotExist:
-                return Response(
-                    {"error": "Session not found or forbidden."},
-                    status=status.HTTP_404_NOT_FOUND,
-                )
-
-        job = Job.objects.create(
-            user=user,
-            session=session,
-            task_type="inference",
-            input_data={"prompt": prompt, "model": model, "stream": stream},
-            status="PENDING",
-            cost=job_cost,
-        )
+            job = Job.objects.create(
+                user=user,
+                session=session,
+                task_type="inference",
+                input_data={"prompt": prompt, "model": model, "stream": stream},
+                status="PENDING",
+                cost=job_cost,
+            )
 
         # If session name is default, we can optionally auto-update it here
         if session and session.name == 'New Chat':
@@ -105,7 +112,7 @@ class JobDetailView(views.APIView):
 
         return Response({
             "id": job.id,
-            "session_id": job.session_id,
+            "session_id": str(job.session_id) if job.session_id is not None else None,
             "status": job.status,
             "result": job.result,
             "prompt": job.input_data.get("prompt"),
@@ -125,7 +132,7 @@ class JobListView(views.APIView):
         jobs = Job.objects.filter(user=request.user).order_by('-created_at')
         data = [{
             "id": j.id,
-            "session_id": j.session_id,
+            "session_id": str(j.session_id) if j.session_id is not None else None,
             "status": j.status,
             "prompt": j.input_data.get("prompt", "")[:80],
             "model": j.input_data.get("model", ""),
@@ -239,6 +246,17 @@ class SessionListView(views.APIView):
 
     def post(self, request):
         name = request.data.get("name", "New Chat")
+        if not isinstance(name, str):
+            return Response(
+                {"error": "Session name must be a string of at most 255 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        name = name.strip() or "New Chat"
+        if len(name) > 255:
+            return Response(
+                {"error": "Session name must be a string of at most 255 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
         session = ChatSession.objects.create(user=request.user, name=name)
         return Response({
             "id": str(session.id),
@@ -252,22 +270,29 @@ class SessionDetailView(views.APIView):
     """Retrieve, update or delete a specific Chat Session."""
     permission_classes = [IsAuthenticated]
 
+    def _get_session(self, session_id, user):
+        """Return the session owned by *user*, or None."""
+        return ChatSession.objects.filter(id=session_id, user=user).first()
+
     def patch(self, request, session_id):
-        session = get_object_or_404(ChatSession, id=session_id)
-        if session.user != request.user:
-            return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
-        
+        session = self._get_session(session_id, request.user)
+        if session is None:
+            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
         name = request.data.get("name")
-        if name:
-            session.name = name
-            session.save()
-            return Response({"status": "success", "name": session.name})
-        return Response({"error": "No name provided"}, status=status.HTTP_400_BAD_REQUEST)
+        if not isinstance(name, str):
+            return Response({"error": "A valid name (≤255 chars) is required."}, status=status.HTTP_400_BAD_REQUEST)
+        name = name.strip()
+        if not name or len(name) > 255:
+            return Response({"error": "A valid name (≤255 chars) is required."}, status=status.HTTP_400_BAD_REQUEST)
+        session.name = name
+        session.save(update_fields=['name'])
+        return Response({"status": "success", "name": session.name})
 
     def delete(self, request, session_id):
-        session = get_object_or_404(ChatSession, id=session_id)
-        if session.user != request.user:
-            return Response({"error": "Unauthorized"}, status=status.HTTP_403_FORBIDDEN)
-        
+        session = self._get_session(session_id, request.user)
+        if session is None:
+            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
         session.delete()
         return Response(status=status.HTTP_204_NO_CONTENT)

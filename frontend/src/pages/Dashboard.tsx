@@ -555,12 +555,20 @@ const ProviderDashboard = ({ token }: { token: string | null }) => {
           <h3>Transaction History</h3>
           <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
             <Filter size={14} style={{ color: 'var(--text-muted)' }} />
-            <div 
-              style={{ position: 'relative', paddingBottom: '16px', marginBottom: '-16px' }}
-              onMouseEnter={() => setIsTxDropdownOpen(true)}
-              onMouseLeave={() => setIsTxDropdownOpen(false)}
-            >
+            <div style={{ position: 'relative' }}>
               <button
+                aria-haspopup="listbox"
+                aria-expanded={isTxDropdownOpen}
+                onClick={() => setIsTxDropdownOpen(v => !v)}
+                onBlur={(e) => {
+                  // Close dropdown only when focus leaves the entire widget
+                  if (!e.currentTarget.parentElement?.contains(e.relatedTarget as Node)) {
+                    setIsTxDropdownOpen(false);
+                  }
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Escape') setIsTxDropdownOpen(false);
+                }}
                 style={{
                   display: 'flex', alignItems: 'center', gap: '8px',
                   background: 'rgba(255,255,255,0.05)', border: '1px solid var(--border)',
@@ -579,40 +587,48 @@ const ProviderDashboard = ({ token }: { token: string | null }) => {
                 />
               </button>
               
-              <div style={{
-                position: 'absolute', top: 'calc(100% - 10px)', right: 0,
-                background: 'var(--bg-card)', border: '1px solid var(--border)',
-                borderRadius: '8px', padding: '6px', minWidth: '150px',
-                boxShadow: '0 10px 30px rgba(0,0,0,0.5)', zIndex: 50,
-                opacity: isTxDropdownOpen ? 1 : 0,
-                transform: isTxDropdownOpen ? 'translateY(0)' : 'translateY(-10px)',
-                pointerEvents: isTxDropdownOpen ? 'auto' : 'none',
-                transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
-              }}>
-                {[
-                  { value: 'all', label: 'All Transactions' },
-                  { value: 'earning', label: 'Earnings Only' },
-                  { value: 'spending', label: 'Spending Only' }
-                ].map(opt => (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      setTxFilter(opt.value);
-                      setIsTxDropdownOpen(false);
-                    }}
-                    className="dropdown-item"
-                    style={{
-                      width: '100%', textAlign: 'left', padding: '8px 12px',
-                      background: 'transparent', border: 'none', borderRadius: '4px',
-                      color: txFilter === opt.value ? 'var(--accent)' : 'var(--text-secondary)',
-                      fontSize: '11px', cursor: 'pointer',
-                      display: 'flex', alignItems: 'center', gap: '8px'
-                    }}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+              {isTxDropdownOpen && (
+                <div
+                  role="listbox"
+                  aria-label="Filter transactions"
+                  style={{
+                    position: 'absolute', top: 'calc(100% + 4px)', right: 0,
+                    background: 'var(--bg-card)', border: '1px solid var(--border)',
+                    borderRadius: '8px', padding: '6px', minWidth: '150px',
+                    boxShadow: '0 10px 30px rgba(0,0,0,0.5)', zIndex: 50,
+                    transition: 'all 0.2s cubic-bezier(0.16, 1, 0.3, 1)'
+                  }}
+                >
+                  {[
+                    { value: 'all', label: 'All Transactions' },
+                    { value: 'earning', label: 'Earnings Only' },
+                    { value: 'spending', label: 'Spending Only' }
+                  ].map(opt => (
+                    <button
+                      key={opt.value}
+                      role="option"
+                      aria-selected={txFilter === opt.value}
+                      onClick={() => {
+                        setTxFilter(opt.value);
+                        setIsTxDropdownOpen(false);
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Escape') setIsTxDropdownOpen(false);
+                      }}
+                      className="dropdown-item"
+                      style={{
+                        width: '100%', textAlign: 'left', padding: '8px 12px',
+                        background: 'transparent', border: 'none', borderRadius: '4px',
+                        color: txFilter === opt.value ? 'var(--accent)' : 'var(--text-secondary)',
+                        fontSize: '11px', cursor: 'pointer',
+                        display: 'flex', alignItems: 'center', gap: '8px'
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
           </div>
         </div>
@@ -682,6 +698,17 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
       setSelectedModel(models[0].name);
     }
   }, [models, selectedModel]);
+
+  // Clear activeJobId when the active job reaches a terminal state
+  useEffect(() => {
+    if (!activeJobId) return;
+    const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
+    if (!activeSession) return;
+    const job = activeSession.jobs.find(j => j.id === activeJobId);
+    if (job && (job.status === 'COMPLETED' || job.status === 'FAILED')) {
+      setActiveJobId(null);
+    }
+  }, [sessions, activeJobId, activeSessionId]);
 
   const handleSubmit = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
@@ -755,10 +782,20 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
     }
   };
 
-  const handleNewChat = () => {
-    const newId = Date.now().toString();
-    setSessions([{ id: newId, name: 'New Chat', jobs: [] }, ...sessions]);
-    setActiveSessionId(newId);
+  const handleNewChat = async () => {
+    try {
+      const response = await axios.post(
+        `${API_URL}/api/computing/sessions/`,
+        { name: 'New Chat' },
+        { headers: { Authorization: `Bearer ${token}` } }
+      );
+      const createdSession = response.data;
+      setSessions(prev => [{ id: createdSession.id, name: createdSession.name, jobs: [] }, ...prev]);
+      setActiveSessionId(createdSession.id);
+    } catch (err: any) {
+      console.error("Failed to create new chat session:", err);
+      alert(`Failed to create new chat: ${err.response?.data?.error || err.message}`);
+    }
   };
 
   const activeSession = sessions.find(s => s.id === activeSessionId) || sessions[0];
