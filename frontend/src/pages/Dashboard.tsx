@@ -756,33 +756,6 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
       {/* Main Chat Area */}
       <div style={{ flex: 1, display: 'flex', flexDirection: 'column', position: 'relative' }}>
         
-        {/* Top bar - Model Selection */}
-        <div style={{
-          padding: '12px 20px', borderBottom: '1px solid var(--border)',
-          display: 'flex', justifyContent: 'center', alignItems: 'center',
-          background: 'rgba(255,255,255,0.02)'
-        }}>
-          <select
-            className="input-field"
-            value={selectedModel}
-            onChange={(e) => setSelectedModel(e.target.value)}
-            disabled={loadingModels || models.length === 0}
-            style={{ width: 'auto', minWidth: '250px', background: 'var(--bg-secondary)' }}
-          >
-            {loadingModels ? (
-                <option>Loading models...</option>
-            ) : models.length === 0 ? (
-                <option>No nodes connected</option>
-            ) : (
-                models.map(m => (
-                    <option key={m.name} value={m.name}>
-                        {m.name} — {m.providers} node{m.providers > 1 ? 's' : ''} (Cost: $1.00)
-                    </option>
-                ))
-            )}
-          </select>
-        </div>
-
         {/* Chat Messages */}
         <div style={{
           flex: 1, overflowY: 'auto', padding: '24px',
@@ -867,47 +840,74 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
           <form 
             onSubmit={handleSubmit}
             style={{
-              display: 'flex', gap: '12px', alignItems: 'flex-end',
-              background: 'var(--bg-card)', padding: '8px', 
+              display: 'flex', flexDirection: 'column', gap: '8px',
+              background: 'var(--bg-card)', padding: '12px', 
               borderRadius: '12px', border: '1px solid var(--border)',
               boxShadow: '0 4px 20px rgba(0,0,0,0.2)'
             }}
           >
-            <textarea
-              value={prompt}
-              onChange={e => setPrompt(e.target.value)}
-              placeholder="Message the network..."
-              style={{
-                flex: 1, background: 'transparent', border: 'none',
-                color: 'var(--text-primary)', padding: '8px 12px',
-                fontSize: '15px', resize: 'none', height: '44px',
-                maxHeight: '200px', outline: 'none', fontFamily: 'var(--font-body)',
-                lineHeight: '1.5'
-              }}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey) {
-                  e.preventDefault();
-                  handleSubmit();
-                }
-              }}
-            />
-            <button
-              type="submit"
-              disabled={submitting || !!activeJobId || !prompt.trim() || models.length === 0}
-              style={{
-                background: (submitting || !!activeJobId || !prompt.trim() || models.length === 0) 
-                  ? 'rgba(255,255,255,0.1)' : 'var(--accent)',
-                color: (submitting || !!activeJobId || !prompt.trim() || models.length === 0) 
-                  ? 'rgba(255,255,255,0.3)' : 'var(--bg-primary)',
-                border: 'none', borderRadius: '8px', padding: '10px 16px',
-                display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                cursor: (submitting || !!activeJobId || !prompt.trim() || models.length === 0) ? 'not-allowed' : 'pointer',
-                transition: 'all 0.2s', fontWeight: 600, fontSize: '13px'
-              }}
-            >
-              {(submitting || !!activeJobId) ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
-              <span className="hidden-mobile">Submit ($1.00)</span>
-            </button>
+            {/* Model Selection Above Input */}
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', borderBottom: '1px solid var(--border)', paddingBottom: '8px', marginBottom: '4px' }}>
+              <Zap size={16} style={{ color: 'var(--accent)' }} />
+              <select
+                className="input-field"
+                value={selectedModel}
+                onChange={(e) => setSelectedModel(e.target.value)}
+                disabled={loadingModels || models.length === 0}
+                style={{ width: 'auto', minWidth: '200px', background: 'transparent', border: 'none', padding: '4px', fontSize: '13px', color: 'var(--accent)', fontWeight: 600, outline: 'none' }}
+              >
+                {loadingModels ? (
+                    <option>Loading models...</option>
+                ) : models.length === 0 ? (
+                    <option>No nodes connected</option>
+                ) : (
+                    models.map(m => (
+                        <option key={m.name} value={m.name} style={{ color: 'var(--text-primary)', background: 'var(--bg-secondary)' }}>
+                            {m.name} — {m.providers} node{m.providers > 1 ? 's' : ''} (Cost: $1.00)
+                        </option>
+                    ))
+                )}
+              </select>
+            </div>
+
+            <div style={{ display: 'flex', gap: '12px', alignItems: 'flex-end' }}>
+              <textarea
+                value={prompt}
+                onChange={e => setPrompt(e.target.value)}
+                placeholder="Message the network..."
+                style={{
+                  flex: 1, background: 'transparent', border: 'none',
+                  color: 'var(--text-primary)', padding: '4px 8px',
+                  fontSize: '15px', resize: 'none', height: '44px',
+                  maxHeight: '200px', outline: 'none', fontFamily: 'var(--font-body)',
+                  lineHeight: '1.5'
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter' && !e.shiftKey) {
+                    e.preventDefault();
+                    handleSubmit();
+                  }
+                }}
+              />
+              <button
+                type="submit"
+                disabled={submitting || !!activeJobId || !prompt.trim() || models.length === 0}
+                style={{
+                  background: (submitting || !!activeJobId || !prompt.trim() || models.length === 0) 
+                    ? 'rgba(255,255,255,0.1)' : 'var(--accent)',
+                  color: (submitting || !!activeJobId || !prompt.trim() || models.length === 0) 
+                    ? 'rgba(255,255,255,0.3)' : 'var(--bg-primary)',
+                  border: 'none', borderRadius: '8px', padding: '10px 16px',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
+                  cursor: (submitting || !!activeJobId || !prompt.trim() || models.length === 0) ? 'not-allowed' : 'pointer',
+                  transition: 'all 0.2s', fontWeight: 600, fontSize: '13px',
+                  marginBottom: '4px'
+                }}
+              >
+                {(submitting || !!activeJobId) ? <Loader2 size={18} className="spin" /> : <Send size={18} />}
+                <span className="hidden-mobile">Submit</span>
+              </button>
+            </div>
           </form>
           <div style={{ textAlign: 'center', fontSize: '11px', color: 'var(--text-muted)', marginTop: '8px' }}>
             Inference is powered by the decentralized GPU Connect network. Costs are directly deducted from your balance.
