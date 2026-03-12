@@ -21,6 +21,7 @@ class JobSubmissionView(views.APIView):
 
         prompt = request.data.get("prompt")
         model = request.data.get("model", "llama3.2:latest")
+        stream = request.data.get("stream", False)
 
         if not prompt:
             return Response(
@@ -37,8 +38,8 @@ class JobSubmissionView(views.APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Check Balance (Simple PoC: 1 credit per job)
-        job_cost = Decimal('1.00')
+        # Check Balance (1.00 base + 0.05 surcharge for streaming)
+        job_cost = Decimal('1.05') if stream else Decimal('1.00')
         if user.wallet_balance < job_cost:
             return Response(
                 {"error": "Insufficient funds"},
@@ -63,7 +64,7 @@ class JobSubmissionView(views.APIView):
             user=user,
             session=session,
             task_type="inference",
-            input_data={"prompt": prompt, "model": model},
+            input_data={"prompt": prompt, "model": model, "stream": stream},
             status="PENDING",
             cost=job_cost,
         )
@@ -83,7 +84,8 @@ class JobSubmissionView(views.APIView):
                     "task_id": job.id,
                     "owner_id": user.id,
                     "model": model,
-                    "prompt": prompt
+                    "prompt": prompt,
+                    "stream": stream
                 }
             }
         )

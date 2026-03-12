@@ -25,6 +25,7 @@ interface JobInfo {
   created_at: string;
   completed_at: string | null;
   session_id?: string;
+  streamed_text?: string;
 }
 
 export interface ChatSession {
@@ -195,6 +196,20 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           } else {
             return [updatedJob, ...prev].slice(0, 10); // Keep last 10
           }
+        });
+        break;
+      case 'job_stream':
+        setSessions(prev => {
+          const next = [...prev];
+          // Find the job in any session and update it
+          for (const session of next) {
+            const job = session.jobs.find(j => j.id === msg.task_id);
+            if (job) {
+              job.streamed_text = (job.streamed_text || '') + msg.chunk;
+              break;
+            }
+          }
+          return next;
         });
         break;
       case 'provider_stats_update':

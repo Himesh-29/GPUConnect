@@ -670,6 +670,7 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
   const [submitting, setSubmitting] = useState(false);
   const [activeJobId, setActiveJobId] = useState<number | null>(null);
   const [isModelDropdownOpen, setIsModelDropdownOpen] = useState(false);
+  const [stream, setStream] = useState(false);
 
   const [editingSessionId, setEditingSessionId] = useState<string | null>(null);
   const [editSessionName, setEditSessionName] = useState('');
@@ -701,12 +702,36 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
         setActiveSessionId(currentSessionId);
       }
 
+      const jobPayload = { prompt, model: selectedModel, session_id: currentSessionId, stream };
+      
+      // Optimistic Update: Insert temporary pending job
+      const tempId = -Date.now();
+      setSessions(prev => prev.map(s => s.id === (currentSessionId as string) ? {
+        ...s,
+        jobs: [...(s.jobs || []), {
+          id: tempId,
+          status: 'PENDING',
+          prompt,
+          model: selectedModel,
+          cost: stream ? '1.05' : '1.00',
+          result: null,
+          created_at: new Date().toISOString(),
+          completed_at: null
+        }]
+      } : s));
+
       const response = await axios.post(
         `${API_URL}/api/computing/submit-job/`,
-        { prompt, model: selectedModel, session_id: currentSessionId },
+        jobPayload,
         { headers: { Authorization: `Bearer ${token}` } }
       );
+      
+      // Update the temp job with real ID
       setActiveJobId(response.data.job_id);
+      setSessions(prev => prev.map(s => ({
+        ...s,
+        jobs: s.jobs.map(j => j.id === tempId ? { ...j, id: response.data.job_id } : j)
+      })));
       setPrompt('');
     } catch (err: any) {
       alert(`Error submitting job: ${err.response?.data?.error || err.message}`);
@@ -918,7 +943,14 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
                     maxWidth: '85%', fontSize: '14px', lineHeight: '1.6',
                     border: '1px solid var(--border)', flex: 1
                   }}>
-                    {job.status === 'RUNNING' && (
+                    {job.status === 'PENDING' && (
+                      <div className="thinking-container">
+                        <span className="thinking-dot"></span>
+                        <span className="thinking-dot"></span>
+                        <span className="thinking-dot"></span>
+                      </div>
+                    )}
+                    {job.status === 'RUNNING' && !job.streamed_text && (
                       <div style={{ display: 'flex', alignItems: 'center', gap: '8px', color: 'var(--accent)' }}>
                         <Loader2 size={16} className="spin" />
                         Generating response...
@@ -929,15 +961,15 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
                         <strong>Error:</strong> {job.result?.error || 'Job failed to complete'}
                       </div>
                     )}
-                    {job.result?.output && (
-                      <div style={{ whiteSpace: 'pre-wrap' }}>{job.result.output}</div>
+                    {(job.streamed_text || job.result?.output) && (
+                      <div style={{ whiteSpace: 'pre-wrap' }}>{job.result?.output || job.streamed_text}</div>
                     )}
                     <div style={{
                       display: 'flex', gap: '12px', marginTop: '12px',
                       fontSize: '11px', color: 'var(--text-muted)'
                     }}>
                       <span>Model: {job.model}</span>
-                      <span>Cost: $1.00</span>
+                      <span>Cost: ${job.cost || '1.00'}</span>
                       {job.status === 'COMPLETED' && <span>✅ Completed</span>}
                     </div>
                   </div>
@@ -1053,6 +1085,22 @@ const PlaygroundDashboard = ({ token }: { token: string | null }) => {
                     </div>
                   </div>
                 )}
+              </div>
+
+              {/* Stream Toggle */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px', padding: '0 8px' }}>
+                <label className="switch">
+                  <input 
+                    type="checkbox" 
+                    id="stream-toggle" 
+                    checked={stream} 
+                    onChange={(e) => setStream(e.target.checked)}
+                  />
+                  <span className="slider"></span>
+                </label>
+                <label htmlFor="stream-toggle" style={{ fontSize: '12px', color: 'var(--text-muted)', cursor: 'pointer', userSelect: 'none' }}>
+                  Stream Response (+5%)
+                </label>
               </div>
 
               {/* Submit Button */}

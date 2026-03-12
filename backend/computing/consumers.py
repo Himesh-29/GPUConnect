@@ -223,6 +223,25 @@ class GPUConsumer(AsyncWebsocketConsumer):
                     await self._fail_job(task_id, {"error": error})
                     await self._notify_job_completion(task_id, self.provider_user_id)
 
+        elif msg_type == "job_stream":
+            result = data.get("result", {})
+            task_id = result.get("task_id")
+            chunk = result.get("chunk", "")
+            owner_id = result.get("owner_id")
+
+            if task_id and owner_id:
+                await self.channel_layer.group_send(
+                    f"user_{owner_id}",
+                    {
+                        "type": "dashboard_update",
+                        "data": {
+                            "type": "job_stream",
+                            "task_id": task_id,
+                            "chunk": chunk
+                        }
+                    }
+                )
+
         elif msg_type == "pong":
             pass
 
