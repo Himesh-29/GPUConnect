@@ -1,5 +1,71 @@
 # GPU Connect Releases
 
+## [v1.0.3](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.3) — Real-Time Chat Streaming & UI Polish
+
+**Release Date**: March 13, 2026
+
+### 🎉 Highlights
+
+Live response streaming with token-by-token rendering, optimistic UI updates for instant feedback, and a fully redesigned chat experience with maximized screen real estate.
+
+### ✨ New Features
+
+#### ⚡ Real-Time Response Streaming
+- Agent streams Ollama responses **token by token** back to the frontend via WebSocket
+- New `job_stream` message type routes chunks through Django Channels to the user's dashboard
+- Optional **+5% cost surcharge** ($1.05 vs $1.00) for streaming — toggled via a premium slider switch in the chat footer
+
+#### 🚀 Optimistic UI Updates
+- User prompts appear **instantly** in the chat window — no waiting for the API round-trip
+- Animated 3-dot "thinking" indicator while the job is pending
+- Temporary job entries are replaced with real server IDs once confirmed
+
+#### 💬 Chat Session History (Database-Backed)
+- New `ChatSession` model persists all chat sessions in the database
+- REST endpoints for creating, listing, renaming, and deleting sessions
+- Jobs are linked to sessions via foreign key — full history retrieval on reload
+
+#### 🎨 Playground Layout Overhaul
+- Chat window now fills **~85% of viewport height** — removed global stat cards
+- User balance displayed inline within the chat input footer
+- Chat input field always visible at the bottom — no more scrolling
+
+### 🔧 Improvements
+
+- **Chat name editing**: Inline rename with ✅ green checkmark (works on mobile + PC via Enter key)
+- **Recent Chats cards**: Yellow/black theme with model info and cost details on the Overview page
+- **Dropdown animations**: All dropdowns now have smooth open/close hover transitions
+- **Chat name persistence**: Fixed bug where renamed sessions didn't persist after page refresh
+- **Stream toggle**: Premium custom slider switch replaces raw checkbox
+
+### 🏗️ Architecture Changes
+
+| Component | Change |
+|-----------|--------|
+| `backend/computing/views.py` | `stream` parameter + dynamic cost ($1.00 / $1.05) |
+| `backend/computing/consumers.py` | `job_stream` event routing to user channel groups |
+| `backend/computing/models.py` | `ChatSession` model with job foreign key |
+| `agent/agent_ollama.py` | Async line-by-line streaming from Ollama API |
+| `frontend/DashboardContext.tsx` | `job_stream` handler + optimistic job insertion |
+| `frontend/Dashboard.tsx` | Streaming render, thinking animation, stream toggle |
+
+### 🛡️ CI Updates
+
+- Added `FORCE_JAVASCRIPT_ACTIONS_TO_NODE24=true` to all GitHub Actions workflows to resolve Node.js 20 deprecation warnings
+
+### 📦 Agent Downloads (Updated)
+
+Rebuilt with streaming support — available at [gpu-connect.vercel.app](https://gpu-connect.vercel.app):
+
+| Platform | File |
+|----------|------|
+| Windows | `gpu-connect.exe` |
+| Linux | `gpu-connect-agent-linux.zip` |
+| macOS | `gpu-connect-agent-macos.zip` |
+
+---
+
+
 ## [v1.0.2](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.2) — CI, coverage, and deployment fixes
 
 **Release Date**: February 15, 2026
