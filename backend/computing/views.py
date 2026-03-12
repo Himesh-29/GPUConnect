@@ -3,12 +3,13 @@ from decimal import Decimal
 
 from asgiref.sync import async_to_sync
 from channels.layers import get_channel_layer
+from django.db import transaction
 from django.shortcuts import get_object_or_404
 from rest_framework import views, status
 from rest_framework.permissions import IsAuthenticated, AllowAny
 from rest_framework.response import Response
 
-from .models import Job, Node
+from .models import Job, Node, ChatSession
 
 
 class JobSubmissionView(views.APIView):
@@ -21,12 +22,29 @@ class JobSubmissionView(views.APIView):
 
         prompt = request.data.get("prompt")
         model = request.data.get("model", "llama3.2:latest")
+        raw_stream = request.data.get("stream", False)
+        if isinstance(raw_stream, str):
+            stream = raw_stream.lower() in ("true", "1", "yes", "on")
+        else:
+            stream = bool(raw_stream)
 
         if not prompt:
             return Response(
                 {"error": "Prompt is required"},
                 status=status.HTTP_400_BAD_REQUEST,
             )
+
+        # Validate session before touching the wallet
+        session_id = request.data.get("session_id")
+        session = None
+        if session_id:
+            try:
+                session = ChatSession.objects.get(id=session_id, user=user)
+            except ChatSession.DoesNotExist:
+                return Response(
+                    {"error": "Session not found or forbidden."},
+                    status=status.HTTP_404_NOT_FOUND,
+                )
 
         # Ensure there are active nodes NOT owned by this user
         other_nodes = Node.objects.filter(is_active=True).exclude(owner=user)
@@ -37,24 +55,31 @@ class JobSubmissionView(views.APIView):
                 status=status.HTTP_400_BAD_REQUEST,
             )
 
-        # Check Balance (Simple PoC: 1 credit per job)
-        job_cost = Decimal('1.00')
+        # Check Balance (1.00 base + 0.05 surcharge for streaming)
+        job_cost = Decimal('1.05') if stream else Decimal('1.00')
         if user.wallet_balance < job_cost:
             return Response(
                 {"error": "Insufficient funds"},
                 status=status.HTTP_402_PAYMENT_REQUIRED,
             )
 
-        user.wallet_balance -= job_cost
-        user.save()
+        with transaction.atomic():
+            user.wallet_balance -= job_cost
+            user.save(update_fields=['wallet_balance'])
 
-        job = Job.objects.create(
-            user=user,
-            task_type="inference",
-            input_data={"prompt": prompt, "model": model},
-            status="PENDING",
-            cost=job_cost,
-        )
+            job = Job.objects.create(
+                user=user,
+                session=session,
+                task_type="inference",
+                input_data={"prompt": prompt, "model": model, "stream": stream},
+                status="PENDING",
+                cost=job_cost,
+            )
+
+        # If session name is default, we can optionally auto-update it here
+        if session and session.name == 'New Chat':
+            session.name = prompt[:30] + ('...' if len(prompt) > 30 else '')
+            session.save()
 
         # Dispatch to all connected GPU provider nodes
         channel_layer = get_channel_layer()
@@ -66,7 +91,8 @@ class JobSubmissionView(views.APIView):
                     "task_id": job.id,
                     "owner_id": user.id,
                     "model": model,
-                    "prompt": prompt
+                    "prompt": prompt,
+                    "stream": stream
                 }
             }
         )
@@ -86,6 +112,7 @@ class JobDetailView(views.APIView):
 
         return Response({
             "id": job.id,
+            "session_id": str(job.session_id) if job.session_id is not None else None,
             "status": job.status,
             "result": job.result,
             "prompt": job.input_data.get("prompt"),
@@ -105,6 +132,7 @@ class JobListView(views.APIView):
         jobs = Job.objects.filter(user=request.user).order_by('-created_at')
         data = [{
             "id": j.id,
+            "session_id": str(j.session_id) if j.session_id is not None else None,
             "status": j.status,
             "prompt": j.input_data.get("prompt", "")[:80],
             "model": j.input_data.get("model", ""),
@@ -181,3 +209,90 @@ class ProviderStatsView(views.APIView):
         days = int(request.query_params.get("days", 30))
         stats = get_provider_stats(request.user, days)
         return Response(stats)
+
+
+class SessionListView(views.APIView):
+    """List and create Chat Sessions."""
+    permission_classes = [IsAuthenticated]
+
+    def get(self, request):
+        sessions = ChatSession.objects.filter(user=request.user).order_by('-created_at')
+        data = []
+        for s in sessions:
+            jobs = list(s.jobs.order_by('created_at').values(
+                'id', 'status', 'input_data', 'result', 'cost', 'created_at', 'completed_at'
+            ))
+            # Format jobs slightly
+            formatted_jobs = []
+            for j in jobs:
+                formatted_jobs.append({
+                    "id": j['id'],
+                    "status": j['status'],
+                    "prompt": j['input_data'].get('prompt', ''),
+                    "model": j['input_data'].get('model', ''),
+                    "cost": str(j['cost']) if j['cost'] else None,
+                    "result": j['result'],
+                    "created_at": j['created_at'],
+                    "completed_at": j['completed_at'],
+                })
+            
+            data.append({
+                "id": str(s.id),
+                "name": s.name,
+                "created_at": s.created_at,
+                "jobs": formatted_jobs,
+            })
+        return Response(data)
+
+    def post(self, request):
+        name = request.data.get("name", "New Chat")
+        if not isinstance(name, str):
+            return Response(
+                {"error": "Session name must be a string of at most 255 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        name = name.strip() or "New Chat"
+        if len(name) > 255:
+            return Response(
+                {"error": "Session name must be a string of at most 255 characters."},
+                status=status.HTTP_400_BAD_REQUEST,
+            )
+        session = ChatSession.objects.create(user=request.user, name=name)
+        return Response({
+            "id": str(session.id),
+            "name": session.name,
+            "created_at": session.created_at,
+            "jobs": []
+        }, status=status.HTTP_201_CREATED)
+
+
+class SessionDetailView(views.APIView):
+    """Retrieve, update or delete a specific Chat Session."""
+    permission_classes = [IsAuthenticated]
+
+    def _get_session(self, session_id, user):
+        """Return the session owned by *user*, or None."""
+        return ChatSession.objects.filter(id=session_id, user=user).first()
+
+    def patch(self, request, session_id):
+        session = self._get_session(session_id, request.user)
+        if session is None:
+            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        name = request.data.get("name")
+        if not isinstance(name, str):
+            return Response({"error": "A valid name (≤255 chars) is required."}, status=status.HTTP_400_BAD_REQUEST)
+        name = name.strip()
+        if not name or len(name) > 255:
+            return Response({"error": "A valid name (≤255 chars) is required."}, status=status.HTTP_400_BAD_REQUEST)
+        session.name = name
+        session.save(update_fields=['name'])
+        return Response({"status": "success", "name": session.name})
+
+    def delete(self, request, session_id):
+        session = self._get_session(session_id, request.user)
+        if session is None:
+            return Response({"error": "Not found"}, status=status.HTTP_404_NOT_FOUND)
+
+        session.delete()
+        return Response(status=status.HTTP_204_NO_CONTENT)

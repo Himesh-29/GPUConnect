@@ -114,27 +114,87 @@ async def check_ollama_status():
         return []
 
 
-async def execute_task(task_data):
-    """Executes a task on local Ollama."""
+async def execute_task(ws, task_data):
+    """Executes a task on local Ollama, optionally streaming results."""
     task_id = task_data.get('task_id')
+    owner_id = task_data.get('owner_id')
     model = task_data.get('model')
     prompt = task_data.get('prompt')
+    stream = task_data.get('stream', False)
 
-    logger.info(f"Executing Task {task_id}: model={model} prompt='{prompt[:50]}...'")
+    logger.info(f"Executing Task {task_id}: model={model} prompt='{prompt[:50]}...' stream={stream}")
 
+    full_response = ""
     try:
         async with aiohttp.ClientSession() as session:
-            payload = {"model": model, "prompt": prompt, "stream": False}
+            payload = {"model": model, "prompt": prompt, "stream": stream}
             async with session.post(
                 f"{OLLAMA_URL}/api/generate",
                 json=payload,
                 timeout=aiohttp.ClientTimeout(total=600)
             ) as response:
                 if response.status == 200:
-                    result = await response.json()
-                    output_text = result.get("response", "")
-                    logger.info(f"Task {task_id} Completed. ({len(output_text)} chars)")
-                    return {"status": "success", "response": output_text, "task_id": task_id}
+                    if stream:
+                        # Buffer by newline and parse complete JSON lines to handle
+                        # chunks that may not align with JSON object boundaries
+                        buffer = b""
+                        async for raw_chunk in response.content:
+                            if not raw_chunk:
+                                continue
+                            buffer += raw_chunk
+                            while b"\n" in buffer:
+                                line, buffer = buffer.split(b"\n", 1)
+                                if not line.strip():
+                                    continue
+                                try:
+                                    chunk_data = json.loads(line.decode("utf-8"))
+                                except json.JSONDecodeError:
+                                    continue
+                                chunk_text = chunk_data.get("response", "")
+                                full_response += chunk_text
+
+                                if chunk_text:
+                                    # Send partial chunk to server
+                                    stream_payload = json.dumps({
+                                        "type": "job_stream",
+                                        "result": {
+                                            "task_id": task_id,
+                                            "owner_id": owner_id,
+                                            "chunk": chunk_text
+                                        }
+                                    }, ensure_ascii=False)
+                                    await ws.send_str(stream_payload)
+
+                                if chunk_data.get("done"):
+                                    buffer = b""
+                                    break
+
+                        # Process any remaining buffered data after the stream ends
+                        if buffer.strip():
+                            try:
+                                chunk_data = json.loads(buffer.decode("utf-8"))
+                                chunk_text = chunk_data.get("response", "")
+                                full_response += chunk_text
+                                if chunk_text:
+                                    stream_payload = json.dumps({
+                                        "type": "job_stream",
+                                        "result": {
+                                            "task_id": task_id,
+                                            "owner_id": owner_id,
+                                            "chunk": chunk_text
+                                        }
+                                    }, ensure_ascii=False)
+                                    await ws.send_str(stream_payload)
+                            except json.JSONDecodeError:
+                                pass
+                        
+                        logger.info(f"Streaming Task {task_id} Completed. ({len(full_response)} chars)")
+                        return {"status": "success", "response": full_response, "task_id": task_id}
+                    else:
+                        result = await response.json()
+                        output_text = result.get("response", "")
+                        logger.info(f"Task {task_id} Completed. ({len(output_text)} chars)")
+                        return {"status": "success", "response": output_text, "task_id": task_id}
                 else:
                     error_text = await response.text()
                     logger.error(f"Task {task_id} Failed: Ollama {response.status}")
@@ -149,7 +209,7 @@ async def execute_task(task_data):
 
 async def handle_job(ws, job_data):
     """Run a job in the background and send the result back."""
-    result = await execute_task(job_data)
+    result = await execute_task(ws, job_data)
     try:
         payload = json.dumps({"type": "job_result", "result": result}, ensure_ascii=False)
         await ws.send_str(payload)

@@ -2,9 +2,12 @@ name: Test & Code Quality
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, "feature-*"]
   pull_request:
     branches: [main, develop]
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: read

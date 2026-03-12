@@ -223,8 +223,45 @@ class GPUConsumer(AsyncWebsocketConsumer):
                     await self._fail_job(task_id, {"error": error})
                     await self._notify_job_completion(task_id, self.provider_user_id)
 
+        elif msg_type == "job_stream":
+            result = data.get("result", {})
+            task_id = result.get("task_id")
+            chunk = result.get("chunk", "")
+            owner_id = result.get("owner_id")
+
+            if task_id and owner_id:
+                # Validate that the job actually belongs to the claimed owner
+                # to prevent a compromised node from injecting into another user's stream
+                verified_owner = await self._get_job_owner_id(task_id)
+                if verified_owner is None or str(verified_owner) != str(owner_id):
+                    logger.warning(
+                        "job_stream rejected: task %s does not belong to owner %s",
+                        task_id, owner_id,
+                    )
+                else:
+                    await self.channel_layer.group_send(
+                        f"user_{owner_id}",
+                        {
+                            "type": "dashboard_update",
+                            "data": {
+                                "type": "job_stream",
+                                "task_id": task_id,
+                                "chunk": chunk
+                            }
+                        }
+                    )
+
         elif msg_type == "pong":
             pass
+
+    @database_sync_to_async
+    def _get_job_owner_id(self, task_id):
+        """Return the user_id of the job owner, or None if not found."""
+        from .models import Job  # pylint: disable=import-outside-toplevel
+        try:
+            return Job.objects.values_list('user_id', flat=True).get(id=task_id)
+        except Job.DoesNotExist:
+            return None
 
     async def _notify_job_completion(self, job_id, provider_id):
         """Send private updates to Job Owner and Provider."""
@@ -309,6 +346,7 @@ class GPUConsumer(AsyncWebsocketConsumer):
                 "max_retries": 1,
                 "job_data": {
                     "id": job.id,
+                    "session_id": str(job.session_id) if job.session_id else None,
                     "status": job.status,
                     "prompt": (
                         input_data.get("prompt", "")
@@ -623,6 +661,7 @@ class DashboardConsumer(AsyncWebsocketConsumer):
             is_dict = isinstance(input_data, dict)
             result.append({
                 "id": job.id,
+                "session_id": str(job.session_id) if job.session_id else None,
                 "status": job.status,
                 "prompt": (
                     input_data.get("prompt", "")

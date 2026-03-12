@@ -1,5 +1,6 @@
 import React, { createContext, useContext, useEffect, useState, useRef } from 'react';
 import { useAuth } from './AuthContext';
+import axios from 'axios';
 
 const WS_URL = import.meta.env.VITE_WS_URL || 'ws://localhost:8000/ws/dashboard/';
 
@@ -23,6 +24,14 @@ interface JobInfo {
   result: any;
   created_at: string;
   completed_at: string | null;
+  session_id?: string;
+  streamed_text?: string;
+}
+
+export interface ChatSession {
+  id: string;
+  name: string;
+  jobs: JobInfo[];
 }
 
 interface DashboardContextType {
@@ -33,6 +42,10 @@ interface DashboardContextType {
   providerStats: any | null;
   setProviderDays: (days: number) => void;
   loading: boolean;
+  sessions: ChatSession[];
+  setSessions: React.Dispatch<React.SetStateAction<ChatSession[]>>;
+  activeSessionId: string;
+  setActiveSessionId: (id: string) => void;
 }
 
 const DashboardContext = createContext<DashboardContextType>({
@@ -42,7 +55,11 @@ const DashboardContext = createContext<DashboardContextType>({
   recentJobs: [],
   providerStats: null,
   setProviderDays: () => {},
-  loading: true
+  loading: true,
+  sessions: [],
+  setSessions: () => {},
+  activeSessionId: 'default',
+  setActiveSessionId: () => {}
 });
 
 export const useDashboard = () => useContext(DashboardContext);
@@ -56,6 +73,85 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   const [providerStats, setProviderStats] = useState<any | null>(null);
   const [loading, setLoading] = useState(true);
   
+  // Chat Sessions global state
+  const [sessions, setSessions] = useState<ChatSession[]>([
+    { id: 'default', name: 'New Chat', jobs: [] }
+  ]);
+  const [activeSessionId, setActiveSessionId] = useState<string>('default');
+  // Keep a ref that always reflects the latest activeSessionId to avoid stale closures
+  const activeSessionIdRef = useRef<string>('default');
+  const _setActiveSessionId = (id: string) => {
+    activeSessionIdRef.current = id;
+    setActiveSessionId(id);
+  };
+
+  // Fetch sessions from REST
+  useEffect(() => {
+    if (!token) return;
+    const fetchSessions = async () => {
+      try {
+        const res = await axios.get(`${import.meta.env.VITE_API_URL || 'http://localhost:8000'}/api/computing/sessions/`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+        const backendSessions = res.data.map((s: any) => ({
+          ...s,
+          jobs: s.jobs || []
+        }));
+        setSessions(prev => {
+          const def = prev.find(p => p.id === 'default');
+          return def ? [def, ...backendSessions] : backendSessions;
+        });
+      } catch (err) {
+        console.error('Failed to fetch sessions', err);
+      }
+    };
+    fetchSessions();
+  }, [token]);
+
+  // Distribute incoming recentJobs into sessions (fully immutable updates)
+  useEffect(() => {
+    if (recentJobs.length === 0) return;
+
+    setSessions(prev => {
+      if (prev.length === 0) return prev;
+
+      // Index recent jobs by id for O(1) status sync
+      const recentJobsById = new Map(recentJobs.map(j => [j.id, j]));
+
+      // Collect all job ids already tracked in any session
+      const allMappedJobIds = new Set(prev.flatMap(s => s.jobs.map(j => j.id)));
+
+      // Only consider jobs we haven't seen before
+      const newJobs = recentJobs.filter(j => !allMappedJobIds.has(j.id));
+
+      // Determine target session for each new job
+      const newJobsBySessionId = new Map<string, any[]>();
+      const fallbackSessionId = activeSessionIdRef.current || prev[0]?.id;
+      newJobs.forEach(newJob => {
+        const targetId = newJob.session_id ? String(newJob.session_id) : fallbackSessionId;
+        if (!targetId) return;
+        const list = newJobsBySessionId.get(targetId) || [];
+        list.push(newJob);
+        newJobsBySessionId.set(targetId, list);
+      });
+
+      // Build a new sessions array with new session/job objects
+      return prev.map(session => {
+        // Sync updated jobs (status changes) immutably
+        const syncedJobs = session.jobs.map(localJob => {
+          const updated = recentJobsById.get(localJob.id);
+          return updated ? updated : localJob;
+        });
+        // Append new jobs belonging to this session
+        const extraJobs = newJobsBySessionId.get(session.id) || [];
+        if (extraJobs.length === 0 && syncedJobs.every((j, i) => j === session.jobs[i])) {
+          return session; // no changes — keep same reference
+        }
+        return { ...session, jobs: [...syncedJobs, ...extraJobs] };
+      });
+    });
+  }, [recentJobs]);
+
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimeout = useRef<any>(null);
 
@@ -116,6 +212,27 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
           }
         });
         break;
+      case 'job_stream':
+        setSessions(prev =>
+          prev.map(session => {
+            const jobIndex = session.jobs.findIndex((j: any) => j.id === msg.task_id);
+            if (jobIndex === -1) return session;
+            const oldJob = session.jobs[jobIndex];
+            const updatedJob = {
+              ...oldJob,
+              streamed_text: (oldJob.streamed_text || '') + msg.chunk,
+            };
+            return {
+              ...session,
+              jobs: [
+                ...session.jobs.slice(0, jobIndex),
+                updatedJob,
+                ...session.jobs.slice(jobIndex + 1),
+              ],
+            };
+          })
+        );
+        break;
       case 'provider_stats_update':
         setProviderStats(msg.stats);
         if (msg.stats?.wallet_balance !== undefined) {
@@ -152,7 +269,7 @@ export const DashboardProvider: React.FC<{ children: React.ReactNode }> = ({ chi
   }, [user]);
 
   return (
-    <DashboardContext.Provider value={{ stats, models, balance, recentJobs, providerStats, setProviderDays, loading }}>
+    <DashboardContext.Provider value={{ stats, models, balance, recentJobs, providerStats, setProviderDays, loading, sessions, setSessions, activeSessionId, setActiveSessionId: _setActiveSessionId }}>
       {children}
     </DashboardContext.Provider>
   );

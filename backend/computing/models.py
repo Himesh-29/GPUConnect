@@ -15,6 +15,19 @@ class Node(models.Model):
     def __str__(self):
         return f"{self.name} ({self.node_id})"
 
+class ChatSession(models.Model):
+    """A chat session containing a chronological list of jobs."""
+    user = models.ForeignKey(
+        settings.AUTH_USER_MODEL, related_name='sessions',
+        on_delete=models.CASCADE,
+    )
+    name = models.CharField(max_length=255, default='New Chat')
+    created_at = models.DateTimeField(auto_now_add=True)
+
+    def __str__(self):
+        return f"ChatSession {self.id}: {self.name}"
+
+
 class Job(models.Model):
     """An inference or training job submitted by a consumer."""
     STATUS_CHOICES = (
@@ -22,6 +35,10 @@ class Job(models.Model):
         ('RUNNING', 'Running'),
         ('COMPLETED', 'Completed'),
         ('FAILED', 'Failed'),
+    )
+    session = models.ForeignKey(
+        ChatSession, related_name='jobs',
+        on_delete=models.CASCADE, null=True, blank=True,
     )
     user = models.ForeignKey(
         settings.AUTH_USER_MODEL, related_name='jobs',

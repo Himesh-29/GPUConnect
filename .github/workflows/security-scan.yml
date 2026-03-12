@@ -2,13 +2,16 @@ name: Security Scan
 
 on:
   push:
-    branches: [main, develop]
+    branches: [main, develop, "feature-*"]
   pull_request:
     branches: [main]
   schedule:
     # Run weekly on Sundays at midnight UTC
     - cron: '0 0 * * 0'
   workflow_dispatch: # Allow manual trigger
+
+env:
+  FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
 permissions:
   contents: read
