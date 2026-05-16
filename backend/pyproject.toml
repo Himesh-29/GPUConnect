@@ -13,7 +13,7 @@ dependencies = [
     "cryptography>=46.0.7",
     "daphne>=4.2.1",
     "dj-database-url>=3.1.0",
-    "django>=5.2.14",
+    "django>=6.0.5",
     "django-allauth[socialaccount]>=65.5.0",
     "django-cors-headers>=4.9.0",
     "djangorestframework>=3.16.1",
@@ -32,6 +32,7 @@ dependencies = [
     "requests>=2.33.0",
     "twisted>=26.4.0rc2",
     "ujson>=5.12.0",
+    "urllib3>=2.7.0",
     "websockets>=16.0",
     "whitenoise>=6.11.0",
 ]
