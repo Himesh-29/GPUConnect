@@ -11,7 +11,7 @@ This release is a dedicated security patch that resolves multiple critical and h
 - Upgraded `django` to `>=6.0.5` to resolve DoS and spoofing vulnerabilities.
 - Upgraded `aiohttp` to `>=3.13.4` to patch request smuggling and DoS risks.
 - Upgraded `requests` to `>=2.33.0` to fix local privilege escalation vulnerabilities.
-- Upgraded various underlying subdependencies including `cryptography`, `pyjwt`, `ujson`, and `twisted`.
+- Upgraded various underlying subdependencies including `cryptography`, `pyjwt`, `ujson`, `twisted`, and `pygments`.
 
 **Frontend (`package.json`)**
 - Upgraded `axios` to `^1.15.2` resolving SSRF and prototype pollution vulnerabilities.
