@@ -9,12 +9,18 @@
 
 # ─── Agent Build ──────────────────────────────────────────
 agent:
-	@echo "Building GPU Connect Agent..."
+	@echo "Building GPU Connect Agent for Windows..."
 	cd agent && pyinstaller --clean --onefile --name gpu-connect-agent agent_ollama.py --distpath . --noconfirm
 	@copy agent\gpu-connect-agent.exe frontend\public\downloads\gpu-connect.exe >nul 2>&1 || true
+	@echo "Building GPU Connect Agent for Linux..."
+	cd agent\linux && call build_linux.bat >nul 2>&1
+	@copy agent\linux\dist\gpu-connect-agent-linux.zip frontend\public\downloads\gpu-connect-agent-linux.zip >nul 2>&1 || true
+	@echo "Building GPU Connect Agent for macOS..."
+	cd agent\macos && call build_macos.bat >nul 2>&1
+	@copy agent\macos\dist\gpu-connect-agent-macos.zip frontend\public\downloads\gpu-connect-agent-macos.zip >nul 2>&1 || true
 	@cd agent && if exist build rmdir /s /q build
 	@cd agent && if exist gpu-connect-agent.spec del gpu-connect-agent.spec
-	@echo "✅ Agent built: agent/gpu-connect-agent.exe"
+	@echo "✅ Agents for Windows, Linux, and macOS built and copied to frontend/public/downloads/"
 
 # ─── Cleanup ─────────────────────────────────────────────
 clean:
