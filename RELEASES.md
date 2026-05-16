@@ -1,5 +1,33 @@
 # GPU Connect Releases
 
+## [v1.0.4](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.4) — Security Patch & Dependency Updates
+
+**Release Date**: May 16, 2026
+
+### 🛡️ Security
+This release is a dedicated security patch that resolves multiple critical and high-severity vulnerabilities identified by Trivy in both the backend and frontend dependencies.
+
+**Backend (`pyproject.toml`, `uv.lock`, `requirements.txt`)**
+- Upgraded `django` to `>=6.0.5` to resolve DoS and spoofing vulnerabilities.
+- Upgraded `aiohttp` to `>=3.13.4` to patch request smuggling and DoS risks.
+- Upgraded `requests` to `>=2.33.0` to fix local privilege escalation vulnerabilities.
+- Upgraded various underlying subdependencies including `cryptography`, `pyjwt`, `ujson`, and `twisted`.
+
+**Frontend (`package.json`)**
+- Upgraded `axios` to `^1.15.2` resolving SSRF and prototype pollution vulnerabilities.
+- Overridden `follow-redirects` to `^1.16.0` to resolve header leak issues.
+
+### 📦 Agent Downloads (Updated)
+The agent packages have been recompiled and are available at [gpu-connect.vercel.app](https://gpu-connect.vercel.app):
+
+| Platform | File |
+|----------|------|
+| Windows | `gpu-connect.exe` |
+| Linux | `gpu-connect-agent-linux.zip` |
+| macOS | `gpu-connect-agent-macos.zip` |
+
+---
+
 ## [v1.0.3](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.3) — Real-Time Chat Streaming & UI Polish
 
 **Release Date**: March 13, 2026
