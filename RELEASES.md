@@ -1,5 +1,26 @@
 # GPU Connect Releases
 
+## [v1.0.6](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.6) — Security Patch & Agent Rebuild Latest
+
+**Release Date**: June 24, 2026
+
+### 🛡️ Security
+This release is a dedicated security patch that resolves 29 known vulnerabilities in the backend dependencies.
+
+**Backend (`pyproject.toml`, `requirements.txt`)**
+- Upgraded multiple vulnerable dependencies to their latest secure versions to fix 29 vulnerabilities identified by pip-audit.
+
+### 📦 Agent Downloads (Updated)
+The agent packages have been recompiled to bundle the updated dependencies and are available at [gpu-connect.vercel.app](https://gpu-connect.vercel.app):
+
+| Platform | File |
+|----------|------|
+| Windows | `gpu-connect.exe` |
+| Linux | `gpu-connect-agent-linux.zip` |
+| macOS | `gpu-connect-agent-macos.zip` |
+
+---
+
 ## [v1.0.5](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.5) — Security Patch & Agent Rebuild
 
 **Release Date**: May 31, 2026
