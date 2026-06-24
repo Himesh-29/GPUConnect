@@ -5,10 +5,13 @@
 **Release Date**: June 24, 2026
 
 ### 🛡️ Security
-This release is a dedicated security patch that resolves 29 known vulnerabilities in the backend dependencies.
+This release is a dedicated security patch that resolves multiple high and critical vulnerabilities in both backend and frontend dependencies.
 
 **Backend (`pyproject.toml`, `requirements.txt`)**
 - Upgraded multiple vulnerable dependencies to their latest secure versions to fix 29 vulnerabilities identified by pip-audit.
+
+**Frontend (`package.json`, `package-lock.json`)**
+- Resolved 13 vulnerabilities (including high and critical severity in `react-router`, `react-router-dom`, and `form-data`) via `npm audit fix` for production dependencies.
 
 ### 📦 Agent Downloads (Updated)
 The agent packages have been recompiled to bundle the updated dependencies and are available at [gpu-connect.vercel.app](https://gpu-connect.vercel.app):
