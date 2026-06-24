@@ -7,8 +7,8 @@
 ### 🛡️ Security
 This release is a dedicated security patch that resolves multiple high and critical vulnerabilities in both backend and frontend dependencies.
 
-**Backend (`pyproject.toml`, `requirements.txt`)**
-- Upgraded multiple vulnerable dependencies to their latest secure versions to fix 29 vulnerabilities identified by pip-audit.
+**Backend (`pyproject.toml`, `uv.lock`, `requirements.txt`)**
+- Upgraded multiple vulnerable dependencies to their latest secure versions to fix vulnerabilities identified by pip-audit and Trivy.
 
 **Frontend (`package.json`, `package-lock.json`)**
 - Resolved 13 vulnerabilities (including high and critical severity in `react-router`, `react-router-dom`, and `form-data`) via `npm audit fix` for production dependencies.
