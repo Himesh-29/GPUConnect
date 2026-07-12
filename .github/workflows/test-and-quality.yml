@@ -138,10 +138,10 @@ jobs:
         run: |
           cd backend
           echo "=== Cyclomatic Complexity ===" > radon-results.txt
-          uv run radon cc -a -n B $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*") >> radon-results.txt 2>&1 || true
+          uv run radon cc -a -n B $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*" ! -path "./.venv/*" ! -path "*/venv/*" ! -path "*/site-packages/*") >> radon-results.txt 2>&1 || true
           echo "" >> radon-results.txt
           echo "=== Maintenance Index ===" >> radon-results.txt
-          uv run radon mi -n B $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*") >> radon-results.txt 2>&1 || true
+          uv run radon mi -n B $(find . -name "*.py" -type f ! -path "./__pycache__/*" ! -path "*/migrations/*" ! -path "./.venv/*" ! -path "*/venv/*" ! -path "*/site-packages/*") >> radon-results.txt 2>&1 || true
           cat radon-results.txt
 
       - name: Count code issues
