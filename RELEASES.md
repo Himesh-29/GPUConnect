@@ -10,6 +10,11 @@ This release is a dedicated security patch that resolves remaining vulnerabiliti
 **Backend (`pyproject.toml`, `uv.lock`, `requirements.txt`)**
 - Upgraded all vulnerable dependencies to their latest secure versions to fix 3 remaining vulnerabilities identified by pip-audit.
 
+### 🔧 CI Fixes
+
+**Test & Code Quality Workflow (`.github/workflows/test-and-quality.yml`)**
+- Excluded `.venv`, `venv`, and `site-packages` directories from `radon` cyclomatic complexity and maintainability index analysis to prevent scanning third-party packages and reduce CI runtime.
+
 ### 📦 Agent Downloads (Updated)
 The agent packages have been recompiled to bundle the updated dependencies and are available at [gpu-connect.vercel.app](https://gpu-connect.vercel.app):
 
