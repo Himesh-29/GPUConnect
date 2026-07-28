@@ -11,6 +11,15 @@ This release is a dedicated frontend security patch that resolves 11 high and mo
 - Upgraded `axios` to `^1.18.1` (in dependencies and overrides) to resolve 10 security vulnerabilities including prototype pollution, excessive recursion DoS, and proxy bypass findings.
 - Added an override for `react-router` (`^8.3.0`) to resolve a React Server Components CSRF bypass vulnerability (`GHSA-qwww-vcr4-c8h2`), achieving zero high/critical vulnerabilities in production dependencies.
 
+### 📦 Agent Downloads (Updated)
+The agent packages have been recompiled and verified to ensure full synchronization with the latest application updates and are available at [gpu-connect.vercel.app](https://gpu-connect.vercel.app):
+
+| Platform | File |
+|----------|------|
+| Windows | `gpu-connect.exe` |
+| Linux | `gpu-connect-agent-linux.zip` |
+| macOS | `gpu-connect-agent-macos.zip` |
+
 ---
 
 ## [v1.0.7](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.7) — Security Patch & Agent Rebuild
