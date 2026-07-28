@@ -1,6 +1,19 @@
 # GPU Connect Releases
 
-## [v1.0.7](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.7) — Security Patch & Agent Rebuild Latest
+## [v1.0.8](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.8) — Frontend Security Patch Latest
+
+**Release Date**: July 28, 2026
+
+### 🛡️ Security
+This release is a dedicated frontend security patch that resolves 11 high and moderate vulnerabilities identified by npm audit and Trivy.
+
+**Frontend (`package.json`, `package-lock.json`)**
+- Upgraded `axios` to `^1.18.1` (in dependencies and overrides) to resolve 10 security vulnerabilities including prototype pollution, excessive recursion DoS, and proxy bypass findings.
+- Added an override for `react-router` (`^8.3.0`) to resolve a React Server Components CSRF bypass vulnerability (`GHSA-qwww-vcr4-c8h2`), achieving zero high/critical vulnerabilities in production dependencies.
+
+---
+
+## [v1.0.7](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.7) — Security Patch & Agent Rebuild
 
 **Release Date**: July 12, 2026
 

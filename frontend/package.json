@@ -14,7 +14,7 @@
     "test:coverage": "vitest --run --coverage"
   },
   "dependencies": {
-    "axios": "^1.16.1",
+    "axios": "^1.18.1",
     "framer-motion": "^12.29.0",
     "lucide-react": "^0.563.0",
     "react": "^19.2.0",
@@ -46,6 +46,7 @@
   },
   "overrides": {
     "follow-redirects": "^1.16.0",
-    "axios": "^1.16.1"
+    "axios": "^1.18.1",
+    "react-router": "^8.3.0"
   }
 }
