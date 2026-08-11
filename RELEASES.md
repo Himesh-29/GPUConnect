@@ -1,6 +1,19 @@
 # GPU Connect Releases
 
-## [v1.0.8](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.8) — Frontend Security Patch Latest
+## [v1.0.9](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.9) — Backend Security Patch
+
+**Release Date**: August 11, 2026
+
+### 🛡️ Security
+This release is a dedicated backend security patch that resolves 4 vulnerabilities identified by Trivy and pip-audit.
+
+**Backend (`pyproject.toml`, `requirements.txt`, `uv.lock`)**
+- Upgraded `aiohttp` to `>=3.14.3` to resolve high and moderate vulnerabilities (CVE-2026-69244, CVE-2026-59881, CVE-2026-69243).
+- Upgraded `cryptography` to `>=50.0.0` to resolve high severity vulnerability (CVE-2026-69247).
+
+---
+
+## [v1.0.8](https://github.com/Himesh-29/GPUConnect/releases/tag/v1.0.8) — Frontend Security Patch & Agent Rebuild Latest
 
 **Release Date**: July 28, 2026
 
